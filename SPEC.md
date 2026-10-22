@@ -50,6 +50,41 @@ la pertinence* means the answer is allowed to come back negative.
 - [L19] Li, Wang, Basu, Kumbier & Yu, *A Debiased MDI Feature Importance Measure
   for Random Forests*, arXiv:1906.10845
 
+## The measures
+
+`mdi_train` — classic MDI, unnormalised. Never `feature_importances_`, which is
+normalised to sum to 1.
+
+`mdi_oob` [L19] — the same quantity re-evaluated off-sample:
+mean over held-out rows of `(mu_child − mu_parent) · y`, with every `mu` taken from
+the **training** (in-bag) data. [L19] define it on the forest's out-of-bag points; here it is evaluated on the
+**validation split** instead, which is the same formula on different held-out
+data rather than their estimator as published.
+
+`ufi` [ZH21] — training impurity drop **plus** the same drop measured on
+held-out rows against the training means.
+
+## The arms
+
+Five arms. All except `standard` are built on the same training split, so
+comparing measures within an arm isolates the evaluation data and comparing arms
+within a measure isolates the pruning. `standard` is built on every point,
+because that is what practitioners actually do.
+
+| Arm | Model | Role |
+|---|---|---|
+| `standard` | grown to purity on all `n` points, `mdi_train` only | what everyone does now: the thing to beat |
+| `full` | grown to purity, training split | isolates the held-out effect |
+| `global` | `min_samples_leaf` chosen out of bag | shallower but **not** adaptive |
+| `ccp` | cost-complexity `ccp_alpha` chosen out of bag | a second adaptive method |
+| `alpha` | alpha-trimming, alpha chosen out of bag | **the method under study** |
+
+**`alpha` vs `global` is the whole project.** Is *adaptive* pruning better than
+merely *shallower* trees?
+
+`alpha` is **alpha-trimming itself** ([SHL24] Algorithm 1), implemented in
+`src/prune.py` from the paper's section 3.1.
+
 
 ## To do
 
