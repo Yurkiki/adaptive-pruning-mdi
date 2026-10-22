@@ -39,6 +39,17 @@ Each clause fixes one bug:
 Both fixes exist separately. **The contribution is combining them**, and *évaluer
 la pertinence* means the answer is allowed to come back negative.
 
+## Why this is not obvious
+
+Scornet's Theorem 3 [S20] holds **as the depth k→∞** (and, for the empirical
+tree, as n→∞): deeper is *better*, and MDI converges to `Var(f_j(X_j))`. The bias
+is a finite-sample effect.
+So pruning cuts both ways:
+
+- it removes the noise absorption (good), but
+- it moves you to a shallower tree that has not resolved the signal yet, so the
+  measure **undershoots** (bad).
+
 ## Papers
 
 - [S20] Scornet, *Trees, forests, and impurity-based variable importance in
