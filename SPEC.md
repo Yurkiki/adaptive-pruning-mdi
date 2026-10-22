@@ -1,5 +1,20 @@
 # Adaptive Pruning and Out-of-Sample MDI — Project Specification
 
+## Summary
+
+MDI (Mean Decrease in Impurity), the usual random-forest variable importance, is biased in two ways. It overestimates importance when trees are grown too deep, and it does so again when it is computed on the same data used to build the trees. This project tests whether **pruning the trees adaptively** (alpha-trimming) and **computing MDI on out-of-bag points** reduce that bias, separately and together.
+
+**Plan.** Three forests are built on identical bootstrap samples:
+- **Full:** fully grown trees.
+- **Global:** a single minimum leaf size for all trees, chosen by OOB error.
+- **Alpha:** the Full trees pruned by alpha-trimming, with α chosen by OOB error.
+
+Each forest gets two MDIs, one on in-bag data and one on out-of-bag data, giving six measures. In simulations the true importances are known ($I_j = \mathrm{Var}(f_j(X_j))$ for additive models with independent inputs). Each measure is scored on bias, variance, MSE, the importance given to noise features, and ranking quality, over 100 repetitions per scenario and sample size. Methods are compared in pairs on the same datasets, with Wilcoxon tests and confidence intervals. The main claim to test is whether the new pruned out-of-sample MDI (Alpha forest, out-of-bag) beats the existing methods, especially global depth control. Two further checks:
+- forest prediction error, to make sure pruning does not cost accuracy;
+- a fresh-data control, to make sure reusing the OOB points does not bias the result.
+
+Real datasets complete the study, using injected noise features, semi-synthetic targets and stability analysis.
+
 ## 1. Goal
 
 Evaluate whether a **Mean Decrease in Impurity (MDI)** computed on **adaptively pruned random-forest trees** (alpha-trimming), and **evaluated on held-out data** rather than on the training sample, gives a more accurate variable importance than existing variants. The evaluation uses both **simulated** data (where the true importances are known) and **real** data.
