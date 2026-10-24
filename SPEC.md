@@ -50,16 +50,17 @@ So pruning cuts both ways:
 - it moves you to a shallower tree that has not resolved the signal yet, so the
   measure **undershoots** (bad).
 
-## Papers
+## References
 
-- [S20] Scornet, *Trees, forests, and impurity-based variable importance in
-  regression*, arXiv:2001.04295
-- [ZH21] Zhou & Hooker, *Unbiased Measurement of Feature Importance in
-  Tree-Based Methods*, arXiv:1903.05179
-- [SHL24] Surjanovic, Henrey & Loughin, *Alpha-Trimming: Locally Adaptive Tree
-  Pruning for Random Forests*, arXiv:2408.07151
-- [L19] Li, Wang, Basu, Kumbier & Yu, *A Debiased MDI Feature Importance Measure
-  for Random Forests*, arXiv:1906.10845
+| Tag | Paper | Used for |
+|---|---|---|
+| [S20] | Scornet, *Trees, forests, and impurity-based variable importance in regression*, [arXiv:2001.04295](https://arxiv.org/abs/2001.04295), AIHP 59(1) 21–52, 2023 | why deep trees are wrong; the target `Var(f_j(X_j))` |
+| [ZH21] | Zhou & Hooker, *Unbiased Measurement of Feature Importance in Tree-Based Methods*, [arXiv:1903.05179](https://arxiv.org/abs/1903.05179), ACM TKDD 15(2), 2021 | **UFI** ("unbiased feature importance"), the measure in the brief |
+| [SHL24] | Surjanovic, Henrey & Loughin, *Alpha-Trimming: Locally Adaptive Tree Pruning for Random Forests*, [arXiv:2408.07151](https://arxiv.org/abs/2408.07151), 2024 | the adaptive pruning method |
+| [L19] | Li, Wang, Basu, Kumbier & Yu, *A Debiased MDI Feature Importance Measure for Random Forests*, [arXiv:1906.10845](https://arxiv.org/abs/1906.10845), NeurIPS 2019 | **MDI-oob**, the competing held-out measure |
+
+> arXiv:1903.05179 is **Zhou & Hooker**, not Li et al. — the two are often confused
+> because both attack training-sample bias. The brief points at UFI.
 
 ## The measures
 
@@ -99,7 +100,7 @@ merely *shallower* trees?
 
 ## To do
 
-- [ ] simulated data with a known true `I_j`
+- [x] simulated data with a known true `I_j`
 - [ ] MDI on the training data, to reproduce bug A
 - [ ] the same drops measured on held-out data
 - [ ] alpha-trimming, from the paper's Algorithm 1
