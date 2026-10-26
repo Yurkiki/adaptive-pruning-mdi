@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Iterator
 
 import numpy as np
 import numpy.typing as npt
@@ -11,6 +12,8 @@ from sklearn.tree import DecisionTreeRegressor
 FloatArray = npt.NDArray[np.float64]
 IntArray = npt.NDArray[np.int64]
 IndexArray = npt.NDArray[np.intp]
+
+Transition = tuple[IndexArray, IndexArray, IndexArray, IndexArray]
 
 
 @dataclass(frozen=True)
@@ -55,3 +58,29 @@ class TreeView:
                 stack.append((int(self.children_left[node]), level + 1))
                 stack.append((int(self.children_right[node]), level + 1))
         return deepest
+
+    def predict(self, x: FloatArray) -> FloatArray:
+        node = np.zeros(x.shape[0], dtype=np.intp)
+        for rows, _, _, child in descend(self, x):
+            node[rows] = child
+        return self.value[node]
+
+
+def descend(tree: TreeView, x: FloatArray) -> Iterator[Transition]:
+    """Walk every row down the tree one level at a time.
+
+    Yields (rows, split_feature, parent_node, child_node) for the rows still moving.
+    """
+    node = np.zeros(x.shape[0], dtype=np.intp)
+    while True:
+        rows = np.flatnonzero(tree.feature[node] >= 0)
+        if rows.size == 0:
+            return
+        parent = node[rows]
+        feature = tree.feature[parent]
+        goes_left = x[rows, feature] <= tree.threshold[parent]
+        child = np.where(
+            goes_left, tree.children_left[parent], tree.children_right[parent]
+        ).astype(np.intp)
+        yield rows, feature, parent, child
+        node[rows] = child

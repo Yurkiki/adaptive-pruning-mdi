@@ -1,13 +1,29 @@
-"""Tests for the data generator: the true importance has to be exactly right."""
+"""Tests for the data generator and the tree arrays."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
+from sklearn.tree import DecisionTreeRegressor
 
 import simulate
+from tree import TreeView, descend
 
 SCENARIO = simulate.scenario_s1()
+FEATURES = SCENARIO.n_features
+
+
+@pytest.fixture(scope="module")
+def data() -> tuple[np.ndarray, np.ndarray]:
+    return simulate.sample(SCENARIO, 400, np.random.default_rng(3))
+
+
+@pytest.fixture(scope="module")
+def full_tree(data) -> tuple[TreeView, DecisionTreeRegressor]:
+    """The same unpruned tree, as our view and as the scikit-learn object."""
+    x, y = data
+    reference = DecisionTreeRegressor(max_features=1.0, random_state=0).fit(x, y)
+    return TreeView.of(reference), reference
 
 
 # --- ground truth ----------------------------------------------------------
@@ -31,3 +47,25 @@ def test_variance_decomposition() -> None:
     _, y = simulate.sample(SCENARIO, 1_000_000, np.random.default_rng(2))
     expected = SCENARIO.true_importance.sum() + SCENARIO.sigma**2
     assert float(y.var()) == pytest.approx(expected, rel=0.01)
+
+
+# --- model construction ----------------------------------------------------
+
+
+def test_treeview_predict_matches_sklearn(data, full_tree) -> None:
+    x, _ = data
+    view, reference = full_tree
+    assert view.predict(x) == pytest.approx(reference.predict(x), abs=1e-12)
+
+
+# --- the importance measures ----------------------------------------------
+
+
+def test_descent_reaches_the_same_leaves_as_sklearn(data, full_tree) -> None:
+    """Our own routing must agree with tree.apply, or every off-sample sum is wrong."""
+    x, _ = data
+    view, reference = full_tree
+    node = np.zeros(x.shape[0], dtype=np.intp)
+    for rows, _, _, child in descend(view, x):
+        node[rows] = child
+    assert (node == reference.apply(x)).all()
