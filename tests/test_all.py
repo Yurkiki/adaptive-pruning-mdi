@@ -1,4 +1,4 @@
-"""Tests for the data generator and the tree arrays."""
+"""Tests for the ground truth and the importance formulas."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from sklearn.tree import DecisionTreeRegressor
 
+import mdi
 import simulate
 from tree import TreeView, descend
 
@@ -59,6 +60,12 @@ def test_treeview_predict_matches_sklearn(data, full_tree) -> None:
 
 
 # --- the importance measures ----------------------------------------------
+
+
+def test_mdi_train_matches_sklearn(full_tree) -> None:
+    view, reference = full_tree
+    expected = reference.tree_.compute_feature_importances(normalize=False)
+    assert mdi.mdi_train(view, FEATURES) == pytest.approx(expected, abs=1e-12)
 
 
 def test_descent_reaches_the_same_leaves_as_sklearn(data, full_tree) -> None:
