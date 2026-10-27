@@ -68,6 +68,14 @@ def test_mdi_train_matches_sklearn(full_tree) -> None:
     assert mdi.mdi_train(view, FEATURES) == pytest.approx(expected, abs=1e-12)
 
 
+def test_full_tree_mdi_sums_to_training_variance(data, full_tree) -> None:
+    """The deep-tree bias of Scornet 2020: the measure absorbs the noise variance."""
+    _, y = data
+    view, _ = full_tree
+    total = float(mdi.mdi_train(view, FEATURES).sum())
+    assert total == pytest.approx(float(np.var(y)), rel=1e-9)
+
+
 def test_descent_reaches_the_same_leaves_as_sklearn(data, full_tree) -> None:
     """Our own routing must agree with tree.apply, or every off-sample sum is wrong."""
     x, _ = data
