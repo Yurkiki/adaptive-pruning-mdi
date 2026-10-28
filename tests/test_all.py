@@ -84,3 +84,12 @@ def test_descent_reaches_the_same_leaves_as_sklearn(data, full_tree) -> None:
     for rows, _, _, child in descend(view, x):
         node[rows] = child
     assert (node == reference.apply(x)).all()
+
+
+def test_training_identity(data, full_tree) -> None:
+    """mdi_oob evaluated on the training rows equals mdi_train, exactly."""
+    x, y = data
+    view, _ = full_tree
+    assert mdi.mdi_oob(view, x, y, FEATURES) == pytest.approx(
+        mdi.mdi_train(view, FEATURES), abs=1e-10
+    )
