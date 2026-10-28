@@ -93,3 +93,20 @@ def test_training_identity(data, full_tree) -> None:
     assert mdi.mdi_oob(view, x, y, FEATURES) == pytest.approx(
         mdi.mdi_train(view, FEATURES), abs=1e-10
     )
+
+
+def test_off_sample_measure_is_not_shift_invariant(data, full_tree) -> None:
+    """Li et al. 2019: sum f_T,k over the training rows is zero, off-sample it is not.
+
+    Shifting y by c moves the measure by exactly c times that sum, which is why the
+    off-sample measures need y centred and the in-sample one does not.
+    """
+    x, y = data
+    view, _ = full_tree
+    ones = np.ones_like(y)
+    assert mdi.mdi_oob(view, x, ones, FEATURES) == pytest.approx(
+        np.zeros(FEATURES), abs=1e-12
+    )
+    held = simulate.sample(SCENARIO, 100, np.random.default_rng(11))[0]
+    off_sample = mdi.mdi_oob(view, held, np.ones(100), FEATURES)
+    assert np.abs(off_sample).max() > 1e-6

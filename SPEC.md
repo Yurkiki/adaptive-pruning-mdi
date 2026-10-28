@@ -76,6 +76,11 @@ data rather than their estimator as published.
 `ufi` [ZH21] — training impurity drop **plus** the same drop measured on
 held-out rows against the training means.
 
+Two shared conventions: `y` is centred by the **training** mean, because the
+held-out measures are not shift-invariant (in-bag `Σ f_T,k = 0`, off-sample it is
+not); and **negative values are never clipped** — noise features must be free to
+come out negative.
+
 ## The arms
 
 Five arms. All except `standard` are built on the same training split, so
@@ -101,8 +106,8 @@ merely *shallower* trees?
 ## To do
 
 - [x] simulated data with a known true `I_j`
-- [ ] MDI on the training data, to reproduce bug A
-- [ ] the same drops measured on held-out data
+- [x] MDI on the training data, to reproduce bug A
+- [x] the same drops measured on held-out data
 - [ ] alpha-trimming, from the paper's Algorithm 1
 - [ ] the arms, the metrics, the paired tests
 - [ ] real data with injected junk columns
