@@ -7,11 +7,13 @@ import pytest
 from sklearn.tree import DecisionTreeRegressor
 
 import mdi
+import models
 import simulate
 from tree import TreeView, descend
 
 SCENARIO = simulate.scenario_s1()
 FEATURES = SCENARIO.n_features
+FOREST = models.ModelConfig(n_trees=25, n_jobs=1)
 
 
 @pytest.fixture(scope="module")
@@ -57,6 +59,23 @@ def test_treeview_predict_matches_sklearn(data, full_tree) -> None:
     x, _ = data
     view, reference = full_tree
     assert view.predict(x) == pytest.approx(reference.predict(x), abs=1e-12)
+
+
+def test_zero_pruning_reproduces_full_tree(data) -> None:
+    x, y = data
+    full = models.grow(x, y, FOREST, 0).model
+    unpruned = models.grow(x, y, FOREST, 0, ccp_alpha=0.0).model
+    assert full.mean_leaves == unpruned.mean_leaves
+
+
+# --- cross-validated tuning ------------------------------------------------
+
+
+def test_selection_takes_the_lowest_oob_error(data) -> None:
+    x, y = data
+    path = models.pruning_path(models.GLOBAL, x, y, FOREST, 0)
+    chosen = models.select_by_oob(path)
+    assert chosen.oob_mse == min(fit.oob_mse for fit in path.fits)
 
 
 # --- the importance measures ----------------------------------------------
@@ -110,3 +129,13 @@ def test_off_sample_measure_is_not_shift_invariant(data, full_tree) -> None:
     held = simulate.sample(SCENARIO, 100, np.random.default_rng(11))[0]
     off_sample = mdi.mdi_oob(view, held, np.ones(100), FEATURES)
     assert np.abs(off_sample).max() > 1e-6
+
+
+def test_model_measure_averages_its_trees(data) -> None:
+    x, y = data
+    config = models.ModelConfig(n_trees=5, n_jobs=1)
+    model = models.grow(x, y, config, 0).model
+    per_tree = [mdi.mdi_train(t, FEATURES) for t in model.trees]
+    assert mdi.model_mdi_train(model, FEATURES) == pytest.approx(
+        np.mean(per_tree, axis=0), abs=1e-12
+    )
