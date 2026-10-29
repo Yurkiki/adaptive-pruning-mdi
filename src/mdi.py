@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import numpy.typing as npt
 
-from tree import TreeView, descend
+from tree import Model, TreeView, descend
 
 FloatArray = npt.NDArray[np.float64]
 
@@ -56,3 +56,27 @@ def mdi_oob(
         contribution = row_weight[rows] * (mean[child] - mean[parent]) * y[rows]
         np.add.at(out, feature, contribution)
     return np.asarray(out / row_weight.sum(), dtype=np.float64)
+
+
+def model_mdi_train(model: Model, n_features: int) -> FloatArray:
+    per_tree = [mdi_train(tree, n_features) for tree in model.trees]
+    return np.asarray(np.mean(per_tree, axis=0), dtype=np.float64)
+
+
+def model_mdi_oob(
+    model: Model, x: FloatArray, y: FloatArray, n_features: int
+) -> FloatArray:
+    per_tree = [mdi_oob(tree, x, y, n_features) for tree in model.trees]
+    return np.asarray(np.mean(per_tree, axis=0), dtype=np.float64)
+
+
+MEASURES = ("mdi_train", "mdi_oob")
+
+
+def all_measures(
+    model: Model, x_val: FloatArray, y_val: FloatArray, n_features: int
+) -> dict[str, FloatArray]:
+    return {
+        "mdi_train": model_mdi_train(model, n_features),
+        "mdi_oob": model_mdi_oob(model, x_val, y_val, n_features),
+    }

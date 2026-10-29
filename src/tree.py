@@ -1,4 +1,8 @@
-"""The tree arrays, pulled out of scikit-learn so that pruning can rewrite them."""
+"""Tree arrays detached from scikit-learn, and a model as a tuple of them.
+
+Every measure is defined per tree and averaged over the model, so a forest and a
+lone tree go through the same code.
+"""
 
 from __future__ import annotations
 
@@ -84,3 +88,27 @@ def descend(tree: TreeView, x: FloatArray) -> Iterator[Transition]:
         ).astype(np.intp)
         yield rows, feature, parent, child
         node[rows] = child
+
+
+@dataclass(frozen=True)
+class Model:
+    """One tree or a forest: predictions and measures average over `trees`."""
+
+    trees: tuple[TreeView, ...]
+
+    @property
+    def n_trees(self) -> int:
+        return len(self.trees)
+
+    def predict(self, x: FloatArray) -> FloatArray:
+        return np.asarray(
+            np.mean([tree.predict(x) for tree in self.trees], axis=0), dtype=np.float64
+        )
+
+    @property
+    def mean_leaves(self) -> float:
+        return float(np.mean([tree.n_leaves for tree in self.trees]))
+
+    @property
+    def mean_depth(self) -> float:
+        return float(np.mean([tree.depth() for tree in self.trees]))
