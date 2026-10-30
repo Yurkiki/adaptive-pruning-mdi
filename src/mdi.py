@@ -1,9 +1,11 @@
-"""The importance measures.
+"""The three importance measures.
 
 mdi_train    classic MDI, measured on the data that chose the splits
 mdi_oob      the same quantity re-evaluated off-sample          [Li et al. 2019]
+ufi          in-bag impurity drop plus the off-sample drop      [Zhou & Hooker 2021]
 
-Each is defined on one tree.
+Each is defined on one tree; `model_*` averages over the trees of a model, so a
+forest and a lone tree go through the same code.
 """
 
 from __future__ import annotations
@@ -58,6 +60,30 @@ def mdi_oob(
     return np.asarray(out / row_weight.sum(), dtype=np.float64)
 
 
+def off_sample_drop(
+    tree: TreeView, x: FloatArray, y: FloatArray, n_features: int
+) -> FloatArray:
+    """The impurity drop measured on held-out rows against the training node means.
+
+    Algebraically identical to omega'_t H'(t) - omega'_L H'(L) - omega'_R H'(R),
+    since (y - mu_parent)^2 - (y - mu_child)^2 factors into the expression below.
+    """
+    mean = node_means(tree)
+    out = np.zeros(n_features, dtype=np.float64)
+    for rows, feature, parent, child in descend(tree, x):
+        gap = mean[child] - mean[parent]
+        contribution = gap * (2.0 * y[rows] - mean[parent] - mean[child])
+        np.add.at(out, feature, contribution)
+    return np.asarray(out / x.shape[0], dtype=np.float64)
+
+
+def ufi(tree: TreeView, x: FloatArray, y: FloatArray, n_features: int) -> FloatArray:
+    return np.asarray(
+        mdi_train(tree, n_features) + off_sample_drop(tree, x, y, n_features),
+        dtype=np.float64,
+    )
+
+
 def model_mdi_train(model: Model, n_features: int) -> FloatArray:
     per_tree = [mdi_train(tree, n_features) for tree in model.trees]
     return np.asarray(np.mean(per_tree, axis=0), dtype=np.float64)
@@ -70,7 +96,14 @@ def model_mdi_oob(
     return np.asarray(np.mean(per_tree, axis=0), dtype=np.float64)
 
 
-MEASURES = ("mdi_train", "mdi_oob")
+def model_ufi(
+    model: Model, x: FloatArray, y: FloatArray, n_features: int
+) -> FloatArray:
+    per_tree = [ufi(tree, x, y, n_features) for tree in model.trees]
+    return np.asarray(np.mean(per_tree, axis=0), dtype=np.float64)
+
+
+MEASURES = ("mdi_train", "mdi_oob", "ufi")
 
 
 def all_measures(
@@ -79,4 +112,5 @@ def all_measures(
     return {
         "mdi_train": model_mdi_train(model, n_features),
         "mdi_oob": model_mdi_oob(model, x_val, y_val, n_features),
+        "ufi": model_ufi(model, x_val, y_val, n_features),
     }

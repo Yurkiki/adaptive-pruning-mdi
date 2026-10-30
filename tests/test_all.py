@@ -130,6 +130,22 @@ def test_training_identity(data, full_tree) -> None:
     )
 
 
+def test_out_of_sample_measures_give_noise_features_nothing() -> None:
+    scenario = simulate.scenario_s1()
+    rng = np.random.default_rng(8)
+    x, y = simulate.sample(scenario, 2000, rng)
+    x_val, y_val = simulate.sample(scenario, 2000, rng)
+    centre = float(y.mean())
+    model = models.grow(x, y - centre, FOREST, 0).model
+    noise = scenario.is_noise
+    explainable = float(scenario.true_importance.sum())
+    for measure in (mdi.model_mdi_oob, mdi.model_ufi):
+        values = measure(model, x_val, y_val - centre, FEATURES)
+        assert abs(float(values[noise].sum())) < 0.05 * explainable
+    in_bag = mdi.model_mdi_train(model, FEATURES)
+    assert float(in_bag[noise].sum()) > 0.05 * explainable
+
+
 def test_off_sample_measure_is_not_shift_invariant(data, full_tree) -> None:
     """Li et al. 2019: sum f_T,k over the training rows is zero, off-sample it is not.
 
