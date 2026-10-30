@@ -68,6 +68,22 @@ def test_zero_pruning_reproduces_full_tree(data) -> None:
     assert full.mean_leaves == unpruned.mean_leaves
 
 
+def test_cost_complexity_path_is_monotone(data) -> None:
+    x, y = data
+    path = models.pruning_path(models.CCP, x, y, FOREST, 0)
+    sizes = [fit.mean_leaves for fit in path.fits]
+    assert sizes == sorted(sizes, reverse=True)
+    assert sizes[0] > sizes[-1]
+    assert path.levels[0] == 0.0
+
+
+def test_grids_must_contain_the_unpruned_case() -> None:
+    with pytest.raises(ValueError):
+        models.ModelConfig(min_samples_leaf_grid=(2, 5))
+    with pytest.raises(ValueError):
+        models.ModelConfig(ccp_fractions=(1e-3, 1e-2))
+
+
 # --- cross-validated tuning ------------------------------------------------
 
 

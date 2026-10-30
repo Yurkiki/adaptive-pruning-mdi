@@ -25,11 +25,14 @@ class ModelConfig:
     n_trees: int = 500
     max_features: float = 1.0 / 3.0
     min_samples_leaf_grid: tuple[int, ...] = (1, 2, 3, 5, 8, 13, 20, 30, 50, 80)
+    ccp_fractions: tuple[float, ...] = (0.0, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2, 3e-2, 1e-1)
     n_jobs: int = -1
 
     def __post_init__(self) -> None:
         if 1 not in self.min_samples_leaf_grid:
             raise ValueError("min_samples_leaf grid must contain the unpruned case, 1")
+        if 0.0 not in self.ccp_fractions:
+            raise ValueError("ccp grid must contain the unpruned case, 0.0")
 
 
 @dataclass(frozen=True)
@@ -130,10 +133,23 @@ def _global_grow(
     return tuple(grow(x, y, config, seed, min_samples_leaf=int(v)) for v in levels)
 
 
+def _ccp_levels(config: ModelConfig, n: int) -> tuple[float, ...]:
+    return config.ccp_fractions
+
+
+def _ccp_grow(
+    x: FloatArray, y: FloatArray, config: ModelConfig, seed: int, levels: tuple[float, ...]
+) -> tuple[Forest, ...]:
+    # ccp_alpha is in impurity units, so the grid is a fraction of Var(y)
+    scale = float(np.var(y))
+    return tuple(grow(x, y, config, seed, ccp_alpha=f * scale) for f in levels)
+
+
 FULL = Family("full", _full_levels, _full_grow)
 GLOBAL = Family("global", _global_levels, _global_grow)
+CCP = Family("ccp", _ccp_levels, _ccp_grow)
 
-FAMILIES: dict[str, Family] = {f.name: f for f in (FULL, GLOBAL)}
+FAMILIES: dict[str, Family] = {f.name: f for f in (FULL, GLOBAL, CCP)}
 
 
 @dataclass(frozen=True)
