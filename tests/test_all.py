@@ -262,6 +262,45 @@ def test_pruned_trees_stay_well_formed(trimmable) -> None:
         assert np.isfinite(pruned.predict(x)).all()
 
 
+def test_pruning_leaves_no_orphaned_internal_nodes(trimmable) -> None:
+    """A split kept low down can be dissolved by a merge higher up.
+
+    Its descendants are then unreachable but would still carry feature >= 0, and
+    mdi_train sums over internal nodes rather than walking from the root, so it
+    would count them. Caught in the wild: 19 stranded nodes in one tree.
+    """
+    views, _, _ = trimmable
+    for view in views:
+        for alpha in (0.25, 0.5, 1.0, 2.0, 3.0):
+            pruned = prune.alpha_trim(view, alpha)
+            reachable = np.zeros(pruned.feature.size, dtype=bool)
+            stack = [0]
+            while stack:
+                node = stack.pop()
+                reachable[node] = True
+                if pruned.feature[node] >= 0:
+                    stack.append(int(pruned.children_left[node]))
+                    stack.append(int(pruned.children_right[node]))
+            assert not ((pruned.feature >= 0) & ~reachable).any()
+
+
+def test_pruned_mdi_train_only_counts_reachable_splits(trimmable) -> None:
+    """mdi_train on a pruned tree must match a walk from the root."""
+    views, _, _ = trimmable
+    for view in views[:6]:
+        pruned = prune.alpha_trim(view, 1.5)
+        counted = np.flatnonzero(pruned.feature >= 0)
+        walked: list[int] = []
+        stack = [0]
+        while stack:
+            node = stack.pop()
+            if pruned.feature[node] >= 0:
+                walked.append(node)
+                stack.append(int(pruned.children_left[node]))
+                stack.append(int(pruned.children_right[node]))
+        assert sorted(counted.tolist()) == sorted(walked)
+
+
 def test_treeview_predict_matches_sklearn(trimmable) -> None:
     views, x, y = trimmable
     config = forest.ForestConfig(n_trees=20, n_jobs=1)

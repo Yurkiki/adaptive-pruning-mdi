@@ -114,6 +114,24 @@ def alpha_trim(tree: TreeView, alpha: float) -> TreeView:
             )
             subtree_sse[node] = subtree_sse[left] + subtree_sse[right]
 
+    # A split kept at one level can still be dissolved by a merge higher up, which
+    # strands its descendants: unreachable, but still carrying feature >= 0. Anything
+    # that sums over internal nodes rather than walking from the root would count
+    # them, so detach them explicitly.
+    reachable = np.zeros(n_nodes, dtype=bool)
+    stack = [0]
+    while stack:
+        node = stack.pop()
+        reachable[node] = True
+        if feature[node] >= 0:
+            stack.append(int(children_left[node]))
+            stack.append(int(children_right[node]))
+    orphaned = ~reachable
+    feature = feature.copy()
+    feature[orphaned] = -2
+    children_left[orphaned] = -1
+    children_right[orphaned] = -1
+
     return TreeView(
         children_left=children_left,
         children_right=children_right,
