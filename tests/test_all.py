@@ -378,7 +378,7 @@ def test_run_one_emits_every_arm_and_the_whole_pruning_path() -> None:
     )
     rows, path_rows = experiment.run_one(SCENARIO, 120, 0, config)
 
-    split_forests = {"full", "global", "ccp", "alpha", "oracle"}
+    split_forests = {"full", "global", "ccp", "alpha0", "alpha", "oracle"}
     expected = (len(split_forests) * len(mdi.MEASURES) + 1) * FEATURES
     assert len(rows) == expected
     assert {r["forest"] for r in rows} == split_forests | {"standard"}

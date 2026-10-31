@@ -153,6 +153,70 @@ Remaining, in order:
 | 3 | **The full alpha grid** `{0, 0.1, ..., 3.0}` for final numbers | runs use a 9-point grid for speed; the paper's is 31 |
 | 4 | **Reproduce one [SHL24] benchmark** | independent check that our transcription of Algorithm 1 is faithful |
 
+## What we found
+
+Ordered by how much I would stake on it.
+
+**1. The held-out fix works.** Importance handed to features whose truth is
+exactly zero, `full` forest:
+
+| | S1 | S4 |
+|---|---|---|
+| `mdi_train` | 0.368 | 0.797 |
+| `ufi_half` | −0.015 | −0.024 |
+
+Roughly a 75x reduction, stable at every sample size. This is half the brief and
+it is not in doubt.
+
+**2. UFI carries twice the scale of MDI-oob** on signal features. Not stated in
+[ZH21] because they only ever rank with it. Unhalved, every bias number doubles.
+
+**3. Alpha-trimming is inert on trees grown to purity.** Zero within-leaf variance
+sends the stump log-likelihood to infinity, the merge test never fires, and
+pruning silently does nothing -- no error, no warning. Not in the paper. This is
+worth telling Scornet.
+
+**4. Scornet's deep-tree bias, reproduced exactly.** Full-tree MDI sums to the
+in-bag `Var(y)` to 1e-9, and the held-out measures recover only 54% of the signal
+at `n_train` = 167, rising to 84% at 4000 -- measured with a 100k validation set,
+so it is the forest's own limit, not estimation noise.
+
+**5. Pruning is two-sided.** It *helps* the in-bag measure and *hurts* the
+held-out one, consistently and significantly. In S4 at `n=1000`, pruning improved
+`mdi_train` in 8 reps of 8 (best alpha 0.5-1.0) while making `ufi_half` worse in
+8 of 8. The two fixes partly work against each other: the held-out measure has no
+noise inflation left for pruning to remove, so pruning only costs it resolution.
+
+**6. No pruning level helps the held-out MDI -- at SNR 4.** Across alpha from 0 to
+3 (67.6 down to 4.5 leaves) the error rises monotonically, and the *oracle*, free
+to choose alpha using the true `I_j`, picked alpha = 0 in 16 repetitions of 16.
+That is not a weak null: the arm that exists to separate "pruning does not help"
+from "OOB chose badly" answers the first.
+
+> **The caveat that bounds this.** Alpha-trimming did not improve *prediction*
+> either in that regime (test MSE also minimised at alpha = 0), and [SHL24]
+> Proposition 3.3 says the right amount of pruning is a function of the
+> signal-to-noise ratio, with low SNR favouring alpha >= 1. So the method was
+> being tested outside the conditions it was designed for. The SNR sweep is what
+> settles whether finding 6 generalises.
+
+**7. UFI beats MDI-oob** on the same forest, significantly (85% of reps).
+
+### Mistakes found along the way
+
+Both were caught by checking rather than by a test failing, which is the
+uncomfortable part.
+
+- **Stranded nodes.** A split kept low in the tree can be dissolved by a merge
+  higher up; its descendants became unreachable but kept `feature >= 0`, and
+  `mdi_train` sums over internal nodes instead of walking from the root. Worst
+  case 19 stranded nodes in one tree. It corrupted `mdi_train` and `ufi_half` on
+  the alpha arm. `mdi_oob` was immune because it descends from the root. Two
+  regression tests now cover it.
+- **The alpha arm's base is not the full arm.** It uses `min_samples_leaf = 5`,
+  so `alpha` vs `full` confounds pruning with base depth. The `alpha0` arm --
+  same base, no pruning -- exists so the pruning comparison is clean.
+
 ## The tests that matter
 
 Six of the 35 carry the weight:

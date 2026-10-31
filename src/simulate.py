@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Protocol
 
 import numpy as np
 import numpy.typing as npt
@@ -93,7 +93,7 @@ class Scenario:
 
 def scenario_s1(snr: float = 4.0, n_noise: int = 5) -> Scenario:
     """Baseline: five smooth signals of comparable size plus pure-noise features."""
-    return Scenario("S1", SIGNAL_LIBRARY + (NOISE,) * n_noise, snr)
+    return Scenario(f"S1_snr{snr:g}", SIGNAL_LIBRARY + (NOISE,) * n_noise, snr)
 
 
 def scenario_s4(snr: float = 4.0, n_noise: int = 5) -> Scenario:
@@ -109,10 +109,14 @@ def scenario_s4(snr: float = 4.0, n_noise: int = 5) -> Scenario:
     signals = tuple(
         rescaled(c, t) for c, t in zip(SIGNAL_LIBRARY, targets, strict=True)
     )
-    return Scenario("S4", signals + (NOISE,) * n_noise, snr)
+    return Scenario(f"S4_snr{snr:g}", signals + (NOISE,) * n_noise, snr)
 
 
-SCENARIOS: dict[str, Callable[[], Scenario]] = {
+class ScenarioFactory(Protocol):
+    def __call__(self, snr: float = ..., n_noise: int = ...) -> Scenario: ...
+
+
+SCENARIOS: dict[str, ScenarioFactory] = {
     "S1": scenario_s1,
     "S4": scenario_s4,
 }

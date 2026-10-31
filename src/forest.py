@@ -23,7 +23,9 @@ class ForestConfig:
     max_features: float = 1.0 / 3.0
     min_samples_leaf_grid: tuple[int, ...] = (1, 2, 3, 5, 8, 13, 20, 30, 50, 80)
     ccp_fractions: tuple[float, ...] = (0.0, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2, 3e-2, 1e-1)
-    alpha_grid: tuple[float, ...] = (0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0)
+    alpha_grid: tuple[float, ...] = (
+        0.0, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0
+    )
     alpha_min_samples_leaf: int = 5
     n_jobs: int = -1
 

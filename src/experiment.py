@@ -5,10 +5,14 @@ path.csv     one row per (n, rep, alpha, measure) -- importance error against th
              amount of pruning, which is what shows whether OOB picks a useful
              pruning level at all
 
-The full, global, pruned and oracle forests are all built on the same training
-split, so comparing measures within a forest isolates the evaluation data and
-comparing forests within a measure isolates the pruning. The standard forest is
-built on every point instead, because that is what practitioners actually do.
+The split-sample forests are all built on the same training split, so comparing
+measures within a forest isolates the evaluation data and comparing forests
+within a measure isolates the pruning. The standard forest is built on every
+point instead, because that is what practitioners actually do.
+
+alpha0 is the alpha arm at alpha = 0: same base forest, no pruning. Comparing
+alpha against alpha0 isolates the pruning alone, because the alpha arm's base
+uses min_samples_leaf = 5 and so is not the same object as the full arm.
 """
 
 from __future__ import annotations
@@ -45,6 +49,7 @@ ORACLE_MEASURE = "ufi_half"
 @dataclass(frozen=True)
 class RunConfig:
     scenario: str = "S1"
+    snr: float = 4.0
     sizes: tuple[int, ...] = (250, 1000)
     n_reps: int = 20
     val_fraction: float = 1.0 / 3.0
@@ -112,6 +117,7 @@ def run_one(
         "full": forest.build_full(x_train, y_train, config.forest, rep),
         "global": forest.build_global(x_train, y_train, config.forest, rep),
         "ccp": forest.select_by_oob(ccp, name="ccp"),
+        "alpha0": replace(alpha.fits[0], name="alpha0"),
         "alpha": forest.select_by_oob(alpha, name="alpha"),
         "oracle": select_oracle(alpha, x_val, y_val, truth),
     }
@@ -186,7 +192,7 @@ def run_one(
 
 
 def run(config: RunConfig, out: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    scenario = simulate.SCENARIOS[config.scenario]()
+    scenario = simulate.SCENARIOS[config.scenario](snr=config.snr)
     rows: list[dict[str, object]] = []
     path_rows: list[dict[str, object]] = []
     for n in config.sizes:
@@ -213,6 +219,7 @@ def run(config: RunConfig, out: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scenario", default="S1", choices=sorted(simulate.SCENARIOS))
+    parser.add_argument("--snr", type=float, default=4.0)
     parser.add_argument("--sizes", type=int, nargs="+", default=[250, 1000])
     parser.add_argument("--reps", type=int, default=20)
     parser.add_argument("--trees", type=int, default=500)
@@ -223,6 +230,7 @@ def main() -> None:
     run(
         RunConfig(
             scenario=args.scenario,
+            snr=args.snr,
             sizes=tuple(args.sizes),
             n_reps=args.reps,
             val_fraction=args.val_fraction,
