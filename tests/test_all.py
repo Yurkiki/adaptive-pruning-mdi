@@ -130,6 +130,22 @@ def test_training_identity(data, full_tree) -> None:
     )
 
 
+def test_ufi_carries_twice_the_scale_of_mdi_oob() -> None:
+    """Raw UFI runs at 2x on signal features, so we halve it. See the spec."""
+    scenario = simulate.scenario_s1(sigma=0.15)
+    rng = np.random.default_rng(7)
+    x, y = simulate.sample(scenario, 4000, rng)
+    x_val, y_val = simulate.sample(scenario, 4000, rng)
+    centre = float(y.mean())
+    model = models.grow(x, y - centre, FOREST, 0, min_samples_leaf=5).model
+    signal = ~scenario.is_noise
+    oob = mdi.model_mdi_oob(model, x_val, y_val - centre, FEATURES)
+    half = mdi.model_ufi_half(model, x_val, y_val - centre, FEATURES)
+    ratio = 2.0 * half[signal] / oob[signal]
+    assert (ratio > 1.7).all()
+    assert half[signal] == pytest.approx(oob[signal], rel=0.15)
+
+
 def test_out_of_sample_measures_give_noise_features_nothing() -> None:
     scenario = simulate.scenario_s1()
     rng = np.random.default_rng(8)
@@ -139,7 +155,7 @@ def test_out_of_sample_measures_give_noise_features_nothing() -> None:
     model = models.grow(x, y - centre, FOREST, 0).model
     noise = scenario.is_noise
     explainable = float(scenario.true_importance.sum())
-    for measure in (mdi.model_mdi_oob, mdi.model_ufi):
+    for measure in (mdi.model_mdi_oob, mdi.model_ufi_half):
         values = measure(model, x_val, y_val - centre, FEATURES)
         assert abs(float(values[noise].sum())) < 0.05 * explainable
     in_bag = mdi.model_mdi_train(model, FEATURES)

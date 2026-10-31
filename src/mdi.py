@@ -6,6 +6,9 @@ ufi          in-bag impurity drop plus the off-sample drop      [Zhou & Hooker 2
 
 Each is defined on one tree; `model_*` averages over the trees of a model, so a
 forest and a lone tree go through the same code.
+
+ufi carries twice the scale of the other two on signal features, so callers
+compare `ufi_half` against the truth. See PROTOCOL, "The measures".
 """
 
 from __future__ import annotations
@@ -96,14 +99,14 @@ def model_mdi_oob(
     return np.asarray(np.mean(per_tree, axis=0), dtype=np.float64)
 
 
-def model_ufi(
+def model_ufi_half(
     model: Model, x: FloatArray, y: FloatArray, n_features: int
 ) -> FloatArray:
     per_tree = [ufi(tree, x, y, n_features) for tree in model.trees]
-    return np.asarray(np.mean(per_tree, axis=0), dtype=np.float64)
+    return np.asarray(np.mean(per_tree, axis=0) / 2.0, dtype=np.float64)
 
 
-MEASURES = ("mdi_train", "mdi_oob", "ufi")
+MEASURES = ("mdi_train", "mdi_oob", "ufi_half")
 
 
 def all_measures(
@@ -112,5 +115,5 @@ def all_measures(
     return {
         "mdi_train": model_mdi_train(model, n_features),
         "mdi_oob": model_mdi_oob(model, x_val, y_val, n_features),
-        "ufi": model_ufi(model, x_val, y_val, n_features),
+        "ufi_half": model_ufi_half(model, x_val, y_val, n_features),
     }

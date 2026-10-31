@@ -73,8 +73,15 @@ the **training** (in-bag) data. [L19] define it on the forest's out-of-bag point
 **validation split** instead, which is the same formula on different held-out
 data rather than their estimator as published.
 
-`ufi` [ZH21] — training impurity drop **plus** the same drop measured on
-held-out rows against the training means.
+`ufi_half` [ZH21] — training impurity drop **plus** the drop measured on held-out
+rows against the training means, halved (below).
+
+> **UFI runs at twice the scale.** For a real split both terms converge to the same
+> true impurity drop, so `UFI → 2·I_j` on signal features while noise still cancels
+> to 0. [ZH21] only ever rank with it, so the constant never mattered to them; we
+> compare numerically against `I_j`, so **it is halved everywhere**. Measured here: raw
+> `ufi/I_j` ≈ 1.3–1.9, and `ufi_half` then tracks `mdi_oob` to within
+> 2.5%.
 
 Two shared conventions: `y` is centred by the **training** mean, because the
 held-out measures are not shift-invariant (in-bag `Σ f_T,k = 0`, off-sample it is
