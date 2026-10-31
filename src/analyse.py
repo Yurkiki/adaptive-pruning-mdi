@@ -23,7 +23,7 @@ SERIES = {"mdi_train": "#2a78d6", "mdi_oob": "#eb6834", "ufi_half": "#1baf7a"}
 ACCENT = "#4a3aa7"
 
 MEASURE_ORDER = ["mdi_train", "mdi_oob", "ufi_half"]
-FOREST_ORDER = ["standard", "full", "global", "pruned", "oracle"]
+FOREST_ORDER = ["standard", "full", "global", "ccp", "alpha", "oracle"]
 
 
 # --- metrics ---------------------------------------------------------------
@@ -172,15 +172,15 @@ def holm(p_values: FloatArray) -> FloatArray:
 Comparison = tuple[tuple[str, str], tuple[str, str], str]
 
 HEADLINE: tuple[Comparison, ...] = (
-    (("pruned", "ufi_half"), ("global", "ufi_half"), "adaptive vs global pruning  [UFI]"),
-    (("pruned", "mdi_oob"), ("global", "mdi_oob"), "adaptive vs global pruning  [MDI-oob]"),
-    (("pruned", "ufi_half"), ("full", "ufi_half"), "pruning, measured held out"),
-    (("pruned", "mdi_train"), ("full", "mdi_train"), "pruning, measured in sample"),
+    (("alpha", "ufi_half"), ("global", "ufi_half"), "alpha-trimming vs global pruning"),
+    (("alpha", "ufi_half"), ("full", "ufi_half"), "alpha-trimming, measured held out"),
+    (("alpha", "ufi_half"), ("ccp", "ufi_half"), "alpha-trimming vs cost-complexity"),
+    (("alpha", "mdi_train"), ("full", "mdi_train"), "alpha-trimming, measured in sample"),
     (("full", "ufi_half"), ("full", "mdi_train"), "held out alone  [UFI]"),
     (("full", "mdi_oob"), ("full", "mdi_train"), "held out alone  [MDI-oob]"),
     (("full", "ufi_half"), ("full", "mdi_oob"), "UFI vs MDI-oob, same forest"),
-    (("pruned", "ufi_half"), ("standard", "mdi_train"), "new method vs standard practice"),
-    (("oracle", "ufi_half"), ("pruned", "ufi_half"), "oracle vs OOB pruning level"),
+    (("alpha", "ufi_half"), ("standard", "mdi_train"), "new method vs standard practice"),
+    (("oracle", "ufi_half"), ("alpha", "ufi_half"), "oracle vs OOB alpha"),
 )
 
 
@@ -383,39 +383,54 @@ def plots(frame: pd.DataFrame, path_frame: pd.DataFrame | None, out_dir: Path) -
 
     # 6. does any pruning level help? the whole path, not just the chosen point
     if path_frame is not None and len(path_frame) > 0:
-        fig, axes = plt.subplots(1, len(sizes), figsize=(5.6 * len(sizes), 4.4),
+        methods = [m for m in ("alpha", "ccp") if m in set(path_frame["method"])]
+        fig, axes = plt.subplots(len(methods), len(sizes),
+                                 figsize=(5.6 * len(sizes), 4.2 * len(methods)),
                                  squeeze=False)
-        for ax, n in zip(axes[0], sizes):
-            block = path_frame[path_frame["n"] == n]
-            levels = sorted(block["alpha_fraction"].unique())
-            position = {value: index for index, value in enumerate(levels)}
-            for measure in MEASURE_ORDER:
-                rows = (
-                    block[block["measure"] == measure]
-                    .groupby("alpha_fraction", as_index=False)["importance_error"]
-                    .mean()
-                    .sort_values("alpha_fraction")
+        for row, method in enumerate(methods):
+            for column, n in enumerate(sizes):
+                ax = axes[row][column]
+                block = path_frame[
+                    (path_frame["n"] == n) & (path_frame["method"] == method)
+                ]
+                levels = sorted(block["level"].unique())
+                position = {value: index for index, value in enumerate(levels)}
+                for measure in MEASURE_ORDER:
+                    rows = (
+                        block[block["measure"] == measure]
+                        .groupby("level", as_index=False)["importance_error"]
+                        .mean()
+                        .sort_values("level")
+                    )
+                    ax.plot([position[v] for v in rows["level"]],
+                            rows["importance_error"], marker="o", markersize=6,
+                            linewidth=1.8, color=SERIES[measure], label=measure,
+                            markeredgecolor=SURFACE, markeredgewidth=1.2, zorder=3)
+                picked = (
+                    block[block["measure"] == MEASURE_ORDER[0]]
+                    .loc[lambda d: d.groupby("rep")["oob_mse"].idxmin()]["level"]
                 )
-                ax.plot([position[v] for v in rows["alpha_fraction"]],
-                        rows["importance_error"], marker="o", markersize=6,
-                        linewidth=1.8, color=SERIES[measure], label=measure,
-                        markeredgecolor=SURFACE, markeredgewidth=1.2, zorder=3)
-            picked = (
-                block[block["measure"] == MEASURE_ORDER[0]]
-                .loc[lambda d: d.groupby("rep")["oob_mse"].idxmin()]["alpha_fraction"]
-            )
-            chosen = float(np.median([position[v] for v in picked]))
-            ax.axvline(chosen, color=ACCENT, linewidth=1.6, zorder=2)
-            ax.annotate("OOB picks here", (chosen, 0.02), xycoords=("data", "axes fraction"),
-                        fontsize=8, color=ACCENT, ha="center",
-                        bbox={"facecolor": SURFACE, "edgecolor": "none", "pad": 2})
-            ax.set_xticks(range(len(levels)))
-            ax.set_xticklabels([f"{v:g}" for v in levels], fontsize=8)
-            _style(ax)
-            ax.set_title(f"n = {n}", fontsize=10)
-            ax.set_xlabel(r"pruning strength   ccp_alpha / Var(y)")
-            ax.set_ylabel("importance error  $\\sum_j (\\hat{M}_j - I_j)^2$")
-            ax.legend(frameon=False, fontsize=8, labelcolor=INK_SOFT)
+                chosen = float(np.median([position[v] for v in picked]))
+                ax.axvline(chosen, color=ACCENT, linewidth=1.6, zorder=2)
+                ax.annotate("OOB picks here", (chosen, 0.03),
+                            xycoords=("data", "axes fraction"), fontsize=8,
+                            color=ACCENT, ha="center",
+                            bbox={"facecolor": SURFACE, "edgecolor": "none", "pad": 2})
+                sizes_at = (
+                    block.groupby("level")["mean_leaves"].mean().reindex(levels)
+                )
+                ax.set_xticks(range(len(levels)))
+                ax.set_xticklabels(
+                    [f"{v:g}\n{int(round(s))} lv" for v, s in zip(levels, sizes_at)],
+                    fontsize=7,
+                )
+                _style(ax)
+                label = "alpha-trimming" if method == "alpha" else "cost-complexity"
+                ax.set_title(f"{label},  n = {n}", fontsize=10)
+                ax.set_xlabel("alpha" if method == "alpha" else "ccp_alpha / Var(y)")
+                ax.set_ylabel("importance error  $\\sum_j (\\hat{M}_j - I_j)^2$")
+                if row == 0 and column == 0:
+                    ax.legend(frameon=False, fontsize=8, labelcolor=INK_SOFT)
         fig.suptitle(f"{scenario}: importance error against how hard we prune",
                      fontsize=11, color=INK)
         finish(fig, "6_pruning_path")

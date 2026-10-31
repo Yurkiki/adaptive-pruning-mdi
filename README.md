@@ -18,6 +18,7 @@ python -m pytest tests/ -q
 ```sh
 python src/experiment.py --scenario S1 --sizes 250 1000 --reps 20 --out results/s1.csv
 python src/analyse.py --results results/s1.csv
+python src/realdata.py --reps 10
 ```
 
 Figures land in `results/figures/`; `results/s1_path.csv` holds the importance
@@ -28,13 +29,15 @@ error at every pruning level.
 | File | Contents |
 |---|---|
 | `src/simulate.py` | additive data generator; true importance `I_j = Var(f_j(X_j))` known analytically |
-| `src/forest.py` | the three forests (full, global depth control, adaptively pruned) and bootstrap bookkeeping |
+| `src/forest.py` | the forests (full, global depth control, two adaptive pruners, oracle) and bootstrap bookkeeping |
 | `src/mdi.py` | the three measures: `mdi_train`, `mdi_oob`, `ufi_half` |
+| `src/prune.py` | alpha-trimming (Algorithm 1 of Surjanovic, Henrey & Loughin 2024) |
+| `src/realdata.py` | real datasets with injected known-junk columns |
 | `src/experiment.py` | run loop, writes one long CSV |
 | `src/analyse.py` | bias/variance/MSE, noise mass, AUC, Kendall tau, paired Wilcoxon |
 | `tests/test_all.py` | the tests, including the exact in-bag identity |
 
-All three forests are built on the same training split, so comparing measures
+The split-sample forests are built on the same training split, so comparing measures
 within a forest isolates the evaluation data, and comparing forests within a
 measure isolates the pruning.
 

@@ -15,6 +15,7 @@ import analyse
 import experiment
 import forest
 import mdi
+import prune
 import simulate
 
 SCENARIO = simulate.scenario_s1()
@@ -27,6 +28,13 @@ def fitted() -> tuple[forest.Fitted, np.ndarray, np.ndarray]:
     x, y = simulate.sample(SCENARIO, 400, rng)
     config = forest.ForestConfig(n_trees=30, n_jobs=1)
     return forest.build_full(x, y, config, 0), x, y
+
+
+@pytest.fixture(scope="module")
+def sklearn_model(fitted) -> object:
+    """The same forest as `fitted`, still as scikit-learn objects."""
+    _, x, y = fitted
+    return forest._fit(x, y, forest.ForestConfig(n_trees=30, n_jobs=1), 0)
 
 
 # --- ground truth ----------------------------------------------------------
@@ -87,7 +95,8 @@ def test_oob_mse_matches_sklearn(fitted) -> None:
     ).fit(x, y)
     counts = forest.inbag_counts(reference, x.shape[0])
     expected = float(np.mean((y - reference.oob_prediction_) ** 2))
-    assert forest.oob_mse(reference, x, y, counts) == pytest.approx(expected, abs=1e-9)
+    wrapped = forest.ensemble(reference)
+    assert forest.oob_mse(wrapped, x, y, counts) == pytest.approx(expected, abs=1e-9)
 
 
 # --- forest construction ---------------------------------------------------
@@ -123,27 +132,27 @@ def test_grids_must_contain_the_unpruned_case() -> None:
 # --- the importance measures ----------------------------------------------
 
 
-def test_mdi_train_matches_sklearn(fitted) -> None:
+def test_mdi_train_matches_sklearn(fitted, sklearn_model) -> None:
     fit, _, _ = fitted
-    for tree in fit.forest.estimators_:
+    for view, tree in zip(fit.forest.trees, sklearn_model.estimators_, strict=True):
         expected = tree.tree_.compute_feature_importances(normalize=False)
-        assert mdi.mdi_train(tree, FEATURES) == pytest.approx(expected, abs=1e-12)
+        assert mdi.mdi_train(view, FEATURES) == pytest.approx(expected, abs=1e-12)
 
 
 def test_full_tree_mdi_sums_to_inbag_variance(fitted) -> None:
     """The deep-tree bias of Scornet 2020: the measure absorbs the noise variance."""
     fit, _, _ = fitted
-    for tree in fit.forest.estimators_:
-        total = float(mdi.mdi_train(tree, FEATURES).sum())
-        assert total == pytest.approx(float(tree.tree_.impurity[0]), rel=1e-9)
+    for view in fit.forest.trees:
+        total = float(mdi.mdi_train(view, FEATURES).sum())
+        assert total == pytest.approx(float(view.impurity[0]), rel=1e-9)
 
 
-def test_descent_reaches_the_same_leaves_as_sklearn(fitted) -> None:
+def test_descent_reaches_the_same_leaves_as_sklearn(fitted, sklearn_model) -> None:
     """Our own routing must agree with tree.apply, or every off-sample sum is wrong."""
     fit, x, _ = fitted
-    for tree in fit.forest.estimators_[:5]:
+    for view, tree in zip(fit.forest.trees[:5], sklearn_model.estimators_[:5], strict=True):
         node = np.zeros(x.shape[0], dtype=np.intp)
-        for rows, _, _, child in mdi._descend(tree, x):
+        for rows, _, _, child in mdi._descend(view, x):
             node[rows] = child
         assert (node == tree.apply(x)).all()
 
@@ -151,10 +160,10 @@ def test_descent_reaches_the_same_leaves_as_sklearn(fitted) -> None:
 def test_inbag_identity(fitted) -> None:
     """mdi_oob on the in-bag rows, weighted by bootstrap counts, equals mdi_train."""
     fit, x, y = fitted
-    for tree, counts in zip(fit.forest.estimators_, fit.inbag_counts, strict=True):
+    for view, counts in zip(fit.forest.trees, fit.inbag_counts, strict=True):
         weights = counts.astype(np.float64)
-        off_sample = mdi.mdi_oob(tree, x, y, FEATURES, weights=weights)
-        assert off_sample == pytest.approx(mdi.mdi_train(tree, FEATURES), abs=1e-10)
+        off_sample = mdi.mdi_oob(view, x, y, FEATURES, weights=weights)
+        assert off_sample == pytest.approx(mdi.mdi_train(view, FEATURES), abs=1e-10)
 
 
 def test_ufi_carries_twice_the_scale_of_mdi_oob() -> None:
@@ -199,12 +208,90 @@ def test_off_sample_measure_is_not_shift_invariant(fitted) -> None:
     """
     fit, x, y = fitted
     ones = np.ones_like(y)
-    for tree, counts in zip(fit.forest.estimators_, fit.inbag_counts, strict=True):
-        in_bag = mdi.mdi_oob(tree, x, ones, FEATURES, weights=counts.astype(np.float64))
+    for view, counts in zip(fit.forest.trees, fit.inbag_counts, strict=True):
+        in_bag = mdi.mdi_oob(view, x, ones, FEATURES, weights=counts.astype(np.float64))
         assert in_bag == pytest.approx(np.zeros(FEATURES), abs=1e-12)
 
     off_sample = mdi.forest_mdi_oob(fit.forest, x[:100], ones[:100], FEATURES)
     assert np.abs(off_sample).max() > 1e-6
+
+
+# --- alpha-trimming -------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def trimmable() -> tuple[tuple[mdi.TreeView, ...], np.ndarray, np.ndarray]:
+    """Trees grown at the node size the alpha-trimming paper assumes."""
+    rng = np.random.default_rng(12)
+    x, y = simulate.sample(SCENARIO, 400, rng)
+    config = forest.ForestConfig(n_trees=20, n_jobs=1)
+    model = forest._fit(x, y, config, 0, min_samples_leaf=config.alpha_min_samples_leaf)
+    return tuple(mdi.TreeView.of(t) for t in model.estimators_), x, y
+
+
+def test_alpha_zero_is_the_unpruned_tree(trimmable) -> None:
+    views, _, _ = trimmable
+    for view in views:
+        assert prune.alpha_trim(view, 0.0) is view
+
+
+def test_pruning_is_monotone_in_alpha(trimmable) -> None:
+    views, _, _ = trimmable
+    sizes = [prune.trim_forest(views, a).mean_leaves
+             for a in (0.0, 0.5, 1.0, 2.0, 3.0)]
+    assert sizes == sorted(sizes, reverse=True)
+    assert sizes[0] > sizes[-1]
+
+
+def test_alpha_trimming_reaches_small_trees(trimmable) -> None:
+    """Cost-complexity never got below ~0.76 of full; alpha-trimming must do better."""
+    views, _, _ = trimmable
+    full = prune.trim_forest(views, 0.0).mean_leaves
+    assert prune.trim_forest(views, 3.0).mean_leaves < 0.25 * full
+
+
+def test_pruned_trees_stay_well_formed(trimmable) -> None:
+    views, x, _ = trimmable
+    for view in views[:5]:
+        pruned = prune.alpha_trim(view, 1.0)
+        internal = pruned.feature >= 0
+        assert (pruned.children_left[internal] >= 0).all()
+        assert (pruned.children_right[internal] >= 0).all()
+        terminal = pruned.feature < 0
+        assert (pruned.children_left[terminal] == -1).all()
+        assert np.isfinite(pruned.predict(x)).all()
+
+
+def test_treeview_predict_matches_sklearn(trimmable) -> None:
+    views, x, y = trimmable
+    config = forest.ForestConfig(n_trees=20, n_jobs=1)
+    model = forest._fit(x, y, config, 0, min_samples_leaf=config.alpha_min_samples_leaf)
+    assert prune.trim_forest(views, 0.0).predict(x) == pytest.approx(
+        model.predict(x), abs=1e-12
+    )
+
+
+def test_pure_leaves_make_alpha_trimming_inert() -> None:
+    """Documents why the base forest is not grown to purity.
+
+    With zero within-leaf variance the stump log-likelihood diverges, the merge
+    test can never fire, and alpha-trimming silently does nothing.
+    """
+    rng = np.random.default_rng(13)
+    x, y = simulate.sample(SCENARIO, 300, rng)
+    config = forest.ForestConfig(n_trees=10, n_jobs=1)
+    pure = forest._fit(x, y, config, 0, min_samples_leaf=1)
+    views = tuple(mdi.TreeView.of(t) for t in pure.estimators_)
+    assert prune.trim_forest(views, 3.0).mean_leaves == prune.trim_forest(views, 0.0).mean_leaves
+
+
+def test_alpha_path_covers_the_grid_from_one_fit(trimmable) -> None:
+    _, x, y = trimmable
+    config = forest.ForestConfig(n_trees=10, n_jobs=1)
+    path = forest.alpha_path(x, y, config, 0)
+    assert path.alphas == config.alpha_grid
+    assert all(fit.name == "alpha" for fit in path.fits)
+    assert path.fits[0].selected_param == 0.0
 
 
 # --- metrics ---------------------------------------------------------------
@@ -252,17 +339,17 @@ def test_run_one_emits_every_arm_and_the_whole_pruning_path() -> None:
     )
     rows, path_rows = experiment.run_one(SCENARIO, 120, 0, config)
 
-    split_forests = {"full", "global", "pruned", "oracle"}
+    split_forests = {"full", "global", "ccp", "alpha", "oracle"}
     expected = (len(split_forests) * len(mdi.MEASURES) + 1) * FEATURES
     assert len(rows) == expected
     assert {r["forest"] for r in rows} == split_forests | {"standard"}
     assert set(rows[0]) == set(experiment.COLUMNS)
     assert not any(np.isnan(float(r["value"])) for r in rows)
 
-    grid = config.forest.ccp_fractions
-    assert len(path_rows) == len(grid) * len(mdi.MEASURES)
+    levels = len(config.forest.ccp_fractions) + len(config.forest.alpha_grid)
+    assert len(path_rows) == levels * len(mdi.MEASURES)
     assert set(experiment.PATH_COLUMNS) == set(path_rows[0])
-    assert sorted({r["alpha_fraction"] for r in path_rows}) == sorted(grid)
+    assert {r["method"] for r in path_rows} == {"ccp", "alpha"}
 
 
 def test_oracle_never_loses_to_the_oob_pruning_level() -> None:
@@ -282,7 +369,7 @@ def test_oracle_never_loses_to_the_oob_pruning_level() -> None:
         )
         return float(((values - truth) ** 2).sum())
 
-    assert error("oracle") <= error("pruned") + 1e-12
+    assert error("oracle") <= error("alpha") + 1e-12
 
 
 def test_standard_arm_uses_every_point() -> None:
@@ -297,7 +384,7 @@ def test_standard_arm_uses_every_point() -> None:
     assert set(frame[frame["forest"] == "standard"]["measure"]) == {"mdi_train"}
 
 
-def test_pruning_path_is_monotone_in_alpha() -> None:
+def test_cost_complexity_path_is_monotone() -> None:
     rng = np.random.default_rng(9)
     x, y = simulate.sample(SCENARIO, 300, rng)
     config = forest.ForestConfig(n_trees=10, n_jobs=1)

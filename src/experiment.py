@@ -35,7 +35,7 @@ COLUMNS = (
 )
 
 PATH_COLUMNS = (
-    "scenario", "n", "rep", "alpha", "alpha_fraction", "measure",
+    "scenario", "n", "rep", "method", "level", "measure",
     "importance_error", "oob_mse", "test_mse", "mean_leaves",
 )
 
@@ -106,12 +106,14 @@ def run_one(
     x_val, y_val = x[val], y[val] - centre
     y_test = y_test_raw - centre
 
-    path = forest.pruning_path(x_train, y_train, config.forest, rep)
+    ccp = forest.pruning_path(x_train, y_train, config.forest, rep)
+    alpha = forest.alpha_path(x_train, y_train, config.forest, rep)
     fits = {
         "full": forest.build_full(x_train, y_train, config.forest, rep),
         "global": forest.build_global(x_train, y_train, config.forest, rep),
-        "pruned": forest.select_by_oob(path),
-        "oracle": select_oracle(path, x_val, y_val, truth),
+        "ccp": forest.select_by_oob(ccp, name="ccp"),
+        "alpha": forest.select_by_oob(alpha, name="alpha"),
+        "oracle": select_oracle(alpha, x_val, y_val, truth),
     }
     standard = forest.build_full(x, y - float(y.mean()), config.forest, rep)
 
@@ -160,21 +162,25 @@ def run_one(
         )
 
     path_rows: list[dict[str, object]] = []
-    for fraction, fit in zip(config.forest.ccp_fractions, path.fits, strict=True):
-        values = measures_of(fit, x_val, y_val, n_features)
-        test_mse = float(np.mean((fit.forest.predict(x_test) - y_test) ** 2))
-        for measure, estimate in values.items():
-            path_rows.append(
-                {
-                    "scenario": scenario.name, "n": n, "rep": rep,
-                    "alpha": fit.selected_param,
-                    "alpha_fraction": fraction,
-                    "measure": measure,
-                    "importance_error": importance_error(estimate, truth),
-                    "oob_mse": fit.oob_mse, "test_mse": test_mse,
-                    "mean_leaves": fit.mean_leaves,
-                }
-            )
+    paths: tuple[tuple[str, tuple[float, ...], forest.PruningPath], ...] = (
+        ("ccp", config.forest.ccp_fractions, ccp),
+        ("alpha", config.forest.alpha_grid, alpha),
+    )
+    for method, levels, walked in paths:
+        for level, fit in zip(levels, walked.fits, strict=True):
+            values = measures_of(fit, x_val, y_val, n_features)
+            test_mse = float(np.mean((fit.forest.predict(x_test) - y_test) ** 2))
+            for measure, estimate in values.items():
+                path_rows.append(
+                    {
+                        "scenario": scenario.name, "n": n, "rep": rep,
+                        "method": method, "level": level,
+                        "measure": measure,
+                        "importance_error": importance_error(estimate, truth),
+                        "oob_mse": fit.oob_mse, "test_mse": test_mse,
+                        "mean_leaves": fit.mean_leaves,
+                    }
+                )
 
     return rows, path_rows
 

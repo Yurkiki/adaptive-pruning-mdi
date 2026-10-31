@@ -112,25 +112,46 @@ built on every point, because that is what practitioners actually do.
 **`pruned` vs `global` is the whole project.** Is *adaptive* pruning better than
 merely *shallower* trees?
 
-`ccp_alpha` stands in for alpha-trimming because the brief says *par exemple*: it
-is adaptive, it is in scikit-learn today, and it let the pipeline reach real
-numbers without a from-scratch implementation first.
+Both adaptive methods are present: `ccp` is scikit-learn cost-complexity pruning,
+`alpha` is **alpha-trimming itself** ([SHL24] Algorithm 1), implemented in
+`src/prune.py` from the paper's section 3.1.
+
+> **Alpha-trimming needs leaves with variance in them.** Its merge test weighs the
+> single-mean model against the two-mean model, and a leaf grown to purity has
+> `sigma^2 = 0`, which sends the stump log-likelihood to infinity: the test can
+> never fire and pruning silently does nothing. The base forest for the `alpha`
+> arm therefore uses `min_samples_leaf = 5`, the node size [SHL24] treat as a
+> fully grown forest. So `alpha = 0` is "the standard random forest" in *their*
+> sense, which is not the same object as our `full` arm. A test pins this down:
+> `test_pure_leaves_make_alpha_trimming_inert`.
+
+This matters because it is what made the pruning question answerable at all.
+Cost-complexity tuned by OOB only ever shrank trees to 76-82% of full, so `ccp`
+and `global` were near-copies of `full`. Alpha-trimming spans the real range —
+41 leaves at `alpha = 0`, 20 at `alpha = 1`, 6 at `alpha = 2`.
 
 ## Status
 
-Built and tested: the simulator with analytic `I_j` (S1, S4), the five arms, the
-three measures, the full pruning path, metrics with Monte Carlo standard errors,
-paired Wilcoxon with bootstrap intervals and Holm, and six figures. 35 tests,
-`mypy --strict` clean.
+Every clause of the brief now has code behind it:
+
+| His words | Where |
+|---|---|
+| arbres moins profonds, de manière adaptative | `src/prune.py` — alpha-trimming, plus cost-complexity as a second adaptive method |
+| calculé sur un jeu de données de validation | `src/experiment.py` — literal train/validation split |
+| jeux de données simulées | `src/simulate.py` — S1, S4, with analytic `I_j` |
+| jeux de données réelles | `src/realdata.py` — diabetes, California Housing, with injected junk columns |
+| évaluer la pertinence | `src/analyse.py` — metrics, paired tests, six figures |
+
+42 tests, `mypy --strict` clean.
 
 Remaining, in order:
 
 | # | Do | Why |
 |---|---|---|
-| 1 | **Force a pruning range that actually prunes.** OOB picks no pruning in 40–60% of reps and tree size only falls to 76–82% of full, so `pruned` and `global` are near-copies of `full` and the headline question has nothing to bite on. Read the answer off the pruning-path figure rather than the OOB-selected point | otherwise the novelty claim is untestable |
-| 2 | **Validation-fraction sweep** — `--val-fraction 0.2 0.33 0.5` | at `n=250` the held-out set is 83 rows against ~106 leaves; untested |
-| 3 | **Real data**: California Housing + Diabetes with `k` known-junk columns appended (permuted copies, i.i.d. continuous, categorical). Measure noise mass and AUC real-vs-injected | the brief asks for real data; no ground truth, so injected junk is the substitute |
-| 4 | **Alpha-trimming proper** ([SHL24] §4) replacing `ccp_alpha` | the paper's actual method. Criterion: merge when `I_N + α·P_0 ≤ I_L + I_R + α·P_1`, with `I_N` an accumulated Gaussian log-likelihood, `P_0 = 2log n`, `P_1 = 5log n`, bottom-up, α on `{0, 0.1, …, 3.0}`, α=0 being the standard forest. Re-read §4 by eye first — this was transcribed from an automated PDF read. No public code; the authors work in Julia |
+| 1 | **Validation-fraction sweep** — `--val-fraction 0.2 0.33 0.5` | at `n=250` the held-out set is 83 rows against ~106 leaves; untested |
+| 2 | **Low-SNR scenario.** [SHL24] say pruning pays off most when the signal-to-noise ratio is low, and every run so far is at SNR = 4 | the condition their method is designed for is the one we have not tried |
+| 3 | **The full alpha grid** `{0, 0.1, ..., 3.0}` for final numbers | runs use a 9-point grid for speed; the paper's is 31 |
+| 4 | **Reproduce one [SHL24] benchmark** | independent check that our transcription of Algorithm 1 is faithful |
 
 ## The tests that matter
 
