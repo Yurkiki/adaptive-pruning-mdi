@@ -5,7 +5,7 @@ mdi_oob      the same quantity re-evaluated off-sample          [Li et al. 2019]
 ufi          in-bag impurity drop plus the off-sample drop      [Zhou & Hooker 2021]
 
 ufi carries twice the scale of the other two on signal features, so callers
-compare `ufi_half` against the truth. See SPEC 5.3.
+compare `ufi_half` against the truth. See PROTOCOL, "The measures".
 """
 
 from __future__ import annotations

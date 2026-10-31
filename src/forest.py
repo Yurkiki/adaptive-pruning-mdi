@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import numpy.typing as npt
@@ -126,25 +126,50 @@ def build_global(
     return best
 
 
-def build_pruned(
-    x: FloatArray, y: FloatArray, config: ForestConfig, seed: int
-) -> Fitted:
-    """Adaptive pruning by cost complexity, tuned on OOB.
+@dataclass(frozen=True)
+class PruningPath:
+    """Every pruning level, fitted once.
 
-    Stands in for alpha-trimming while that is unimplemented; the grid is expressed
-    as a fraction of Var(y) because ccp_alpha is measured in impurity units.
+    ccp_alpha prunes a tree that was already grown, so the whole path costs one
+    sweep and any selection rule can be applied to it afterwards: by OOB error
+    for the honest arm, by importance error for the oracle arm.
+    """
+
+    fits: tuple[Fitted, ...]
+
+    @property
+    def alphas(self) -> tuple[float, ...]:
+        return tuple(fit.selected_param for fit in self.fits)
+
+
+def pruning_path(
+    x: FloatArray, y: FloatArray, config: ForestConfig, seed: int
+) -> PruningPath:
+    """Adaptive pruning by cost complexity, across the whole grid.
+
+    Stands in for alpha-trimming while that is unimplemented. The grid is a
+    fraction of Var(y) because ccp_alpha is measured in impurity units.
     """
     scale = float(np.var(y))
-    best: Fitted | None = None
+    fits: list[Fitted] = []
     for fraction in config.ccp_fractions:
         alpha = fraction * scale
         forest = _fit(x, y, config, seed, ccp_alpha=alpha)
         counts = inbag_counts(forest, x.shape[0])
-        error = oob_mse(forest, x, y, counts)
-        if best is None or error < best.oob_mse:
-            best = Fitted("pruned", forest, alpha, error, counts)
-    assert best is not None
-    return best
+        fits.append(
+            Fitted("pruned", forest, alpha, oob_mse(forest, x, y, counts), counts)
+        )
+    return PruningPath(tuple(fits))
+
+
+def select_by_oob(path: PruningPath, name: str = "pruned") -> Fitted:
+    return replace(min(path.fits, key=lambda fit: fit.oob_mse), name=name)
+
+
+def build_pruned(
+    x: FloatArray, y: FloatArray, config: ForestConfig, seed: int
+) -> Fitted:
+    return select_by_oob(pruning_path(x, y, config, seed))
 
 
 BUILDERS = (build_full, build_global, build_pruned)

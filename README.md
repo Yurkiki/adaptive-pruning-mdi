@@ -1,8 +1,10 @@
 # Adaptive Pruning and Out-of-Sample MDI
 
 Does a variable importance measured on **adaptively pruned** random forests and
-evaluated on **held-out data** beat the standard MDI? See [SPEC.md](SPEC.md) for
-the study design, [PROTOCOL.md](PROTOCOL.md) for the build order.
+evaluated on **held-out data** beat the standard MDI?
+
+**Start with [PROTOCOL.md](PROTOCOL.md)** — the problem, the aim, the measures and
+what is left to build.
 
 ## Setup
 
@@ -18,6 +20,9 @@ python src/experiment.py --scenario S1 --sizes 250 1000 --reps 20 --out results/
 python src/analyse.py --results results/s1.csv
 ```
 
+Figures land in `results/figures/`; `results/s1_path.csv` holds the importance
+error at every pruning level.
+
 ## What is where
 
 | File | Contents |
@@ -27,7 +32,7 @@ python src/analyse.py --results results/s1.csv
 | `src/mdi.py` | the three measures: `mdi_train`, `mdi_oob`, `ufi_half` |
 | `src/experiment.py` | run loop, writes one long CSV |
 | `src/analyse.py` | bias/variance/MSE, noise mass, AUC, Kendall tau, paired Wilcoxon |
-| `tests/test_all.py` | 30 tests, including the exact in-bag identity |
+| `tests/test_all.py` | the tests, including the exact in-bag identity |
 
 All three forests are built on the same training split, so comparing measures
 within a forest isolates the evaluation data, and comparing forests within a

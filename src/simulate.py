@@ -97,8 +97,15 @@ def scenario_s1(snr: float = 4.0, n_noise: int = 5) -> Scenario:
 
 
 def scenario_s4(snr: float = 4.0, n_noise: int = 5) -> Scenario:
-    """Heterogeneous signal: true importances spanning three orders of magnitude."""
-    targets = (2.0, 0.5, 0.1, 0.02, 0.004)
+    """Heterogeneous signal: true importances spanning two orders of magnitude.
+
+    A constant ratio of 3 between consecutive components. The weakest is 0.02
+    against a noise variance near 0.6, so it sits close to the detection limit
+    deliberately: a good measure should call it small but non-zero rather than
+    zero. That also caps the achievable signal-versus-noise AUC in this
+    scenario, which is why Kendall tau matters more here.
+    """
+    targets = (1.62, 0.54, 0.18, 0.06, 0.02)
     signals = tuple(
         rescaled(c, t) for c, t in zip(SIGNAL_LIBRARY, targets, strict=True)
     )

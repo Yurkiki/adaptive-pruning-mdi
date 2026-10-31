@@ -158,7 +158,7 @@ def test_inbag_identity(fitted) -> None:
 
 
 def test_ufi_carries_twice_the_scale_of_mdi_oob() -> None:
-    """SPEC 5.3: raw UFI runs at 2x on signal features, so we halve it."""
+    """Raw UFI runs at 2x on signal features, so we halve it. See PROTOCOL."""
     scenario = simulate.scenario_s1(snr=50.0)
     rng = np.random.default_rng(7)
     x, y = simulate.sample(scenario, 4000, rng)
@@ -246,21 +246,82 @@ def test_holm_is_monotone_and_at_least_raw() -> None:
 # --- end to end ------------------------------------------------------------
 
 
-def test_run_one_returns_one_row_per_arm_and_feature() -> None:
+def test_run_one_emits_every_arm_and_the_whole_pruning_path() -> None:
     config = experiment.RunConfig(
         n_reps=1, forest=forest.ForestConfig(n_trees=10, n_jobs=1), n_test=200
     )
-    rows = experiment.run_one(SCENARIO, 120, 0, config)
-    expected = len(forest.BUILDERS) * len(mdi.MEASURES) * FEATURES
+    rows, path_rows = experiment.run_one(SCENARIO, 120, 0, config)
+
+    split_forests = {"full", "global", "pruned", "oracle"}
+    expected = (len(split_forests) * len(mdi.MEASURES) + 1) * FEATURES
     assert len(rows) == expected
+    assert {r["forest"] for r in rows} == split_forests | {"standard"}
     assert set(rows[0]) == set(experiment.COLUMNS)
     assert not any(np.isnan(float(r["value"])) for r in rows)
+
+    grid = config.forest.ccp_fractions
+    assert len(path_rows) == len(grid) * len(mdi.MEASURES)
+    assert set(experiment.PATH_COLUMNS) == set(path_rows[0])
+    assert sorted({r["alpha_fraction"] for r in path_rows}) == sorted(grid)
+
+
+def test_oracle_never_loses_to_the_oob_pruning_level() -> None:
+    """The oracle picks on importance error, so by construction it cannot be worse."""
+    config = experiment.RunConfig(
+        n_reps=1, forest=forest.ForestConfig(n_trees=20, n_jobs=1), n_test=200
+    )
+    rows, _ = experiment.run_one(SCENARIO, 200, 0, config)
+    frame = pd.DataFrame(rows)
+    truth = SCENARIO.true_importance
+
+    def error(name: str) -> float:
+        values = (
+            frame[(frame["forest"] == name) & (frame["measure"] == experiment.ORACLE_MEASURE)]
+            .sort_values("feature")["value"]
+            .to_numpy(dtype=np.float64)
+        )
+        return float(((values - truth) ** 2).sum())
+
+    assert error("oracle") <= error("pruned") + 1e-12
+
+
+def test_standard_arm_uses_every_point() -> None:
+    config = experiment.RunConfig(
+        n_reps=1, forest=forest.ForestConfig(n_trees=10, n_jobs=1), n_test=200
+    )
+    rows, _ = experiment.run_one(SCENARIO, 300, 0, config)
+    frame = pd.DataFrame(rows)
+    standard = frame[frame["forest"] == "standard"]["mean_leaves"].iloc[0]
+    split = frame[frame["forest"] == "full"]["mean_leaves"].iloc[0]
+    assert standard > split
+    assert set(frame[frame["forest"] == "standard"]["measure"]) == {"mdi_train"}
+
+
+def test_pruning_path_is_monotone_in_alpha() -> None:
+    rng = np.random.default_rng(9)
+    x, y = simulate.sample(SCENARIO, 300, rng)
+    config = forest.ForestConfig(n_trees=10, n_jobs=1)
+    path = forest.pruning_path(x, y, config, 0)
+    sizes = [fit.mean_leaves for fit in path.fits]
+    assert sizes == sorted(sizes, reverse=True)
+    assert path.fits[0].selected_param == 0.0
 
 
 def test_runs_are_reproducible() -> None:
     config = experiment.RunConfig(
         n_reps=1, forest=forest.ForestConfig(n_trees=10, n_jobs=1), n_test=200
     )
-    first = experiment.run_one(SCENARIO, 120, 0, config)
-    second = experiment.run_one(SCENARIO, 120, 0, config)
+    first, _ = experiment.run_one(SCENARIO, 120, 0, config)
+    second, _ = experiment.run_one(SCENARIO, 120, 0, config)
     assert [r["value"] for r in first] == [r["value"] for r in second]
+
+
+def test_summary_reports_standard_errors_and_relative_loss() -> None:
+    config = experiment.RunConfig(
+        n_reps=1, forest=forest.ForestConfig(n_trees=10, n_jobs=1), n_test=200
+    )
+    rows = [r for rep in range(3) for r in experiment.run_one(SCENARIO, 120, rep, config)[0]]
+    table = analyse.summary(pd.DataFrame(rows))
+    for column in ("total_mse_se", "noise_mass_se", "relative_loss", "excess_risk"):
+        assert column in table
+    assert (table["total_mse_se"] >= 0).all()

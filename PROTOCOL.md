@@ -1,201 +1,180 @@
-# PROTOCOL — what to build, in order
+# PROTOCOL
 
-Companion to [SPEC.md](SPEC.md). SPEC is *what the study is*; this is *what to type*.
+## The problem
 
-**5 files, ~500 lines, one CSV.** If it starts feeling like a framework, you've gone wrong.
+A random forest reports how important each variable is: when a split is made on
+feature `j`, the spread of `y` inside the node drops, and MDI adds up that drop
+over every split on `j`. Read plainly, it says *how much uncertainty about y did
+this variable remove*.
 
----
+It is wrong in two separate ways.
 
-## Step 0 — See the bug first
+**Bug A — deep trees invent importance.** Grow a tree until every leaf holds one
+point and the spread inside a leaf is zero, so the drops add up to the *entire*
+variance of `y`. But `Var(y) = signal + noise`, so the measure has just shared the
+**noise** variance out among the features as if it were importance. Take 100 points
+of pure noise `y` and 5 pure-noise features — nothing related to anything — and MDI
+still hands each feature ≈0.2. Scornet proves the limit: `Σ_j MDI → Var(m(X)) + σ²`
+when the right answer is `Var(m(X))`. In our own runs, `mdi_train` gives the five
+noise features a combined **0.37** when the truth is 0.
 
-Before any structure. Run this:
+**Bug B — grading on the questions you studied.** The tree searched every candidate
+split and kept the one that looked best *on the training data*. MDI then measures
+how good that split was on **the same data**. The score is inflated by construction.
 
-```python
-import numpy as np
-from sklearn.ensemble import RandomForestRegressor
+## The aim
 
-rng = np.random.default_rng(0)
-X = rng.normal(size=(100, 5))     # 5 pure-noise features
-y = rng.normal(size=100)          # y unrelated to all of them
+Scornet's brief, 2026-10-24:
 
-rf = RandomForestRegressor(n_estimators=500, random_state=0).fit(X, y)
+> « évaluer la pertinence d'un MDI construit sur des arbres (forêts) **moins
+> profonds** (par exemple utilisant la dernière méthode), calculé sur un **jeu de
+> données de validation**, à la fois sur jeux de données **réelles et simulées**. »
 
-total = np.mean([t.tree_.compute_feature_importances(normalize=False).sum()
-                 for t in rf.estimators_])
-print(rf.feature_importances_)          # truth is 0,0,0,0,0 — it won't be
-print(total, "vs Var(y) =", y.var())    # these will match
-```
+Each clause fixes one bug:
 
-Nothing in `X` relates to `y`, yet every feature gets positive importance and the total lands on `Var(y)`. **That is the bug the project exists to fix.** Everything below is machinery for measuring it properly.
-
----
-
-## The whole codebase
-
-```
-simulate.py      ~80 lines    fake data where we know the true answer
-forest.py        ~80 lines    build the 4 forests, bootstrap bookkeeping
-mdi.py          ~120 lines    the three importance measures
-experiment.py   ~100 lines    run loop -> results.csv
-analyse.py       ~80 lines    metrics, tests, plots
-tests/test_all.py ~80 lines   the 6 tests that matter
-```
-
-**Data format: one CSV, long.** One row per `(n, rep, arm, feature)`:
-
-```
-n, rep, arm, feature, value, I_j, is_noise, oob_mse, test_mse, selected_param, mean_leaves
-```
-
-Run-level columns repeat on every row. That's redundant and completely fine at ~4000 rows — it buys you never writing a join. Open it in a text editor when something looks wrong.
-
-**No config files.** Scenarios are a dict in `simulate.py`; run settings are function arguments.
-
-**Seeds:** `rng = np.random.default_rng(rep)` for data, `random_state=rep` for forests. Pass them explicitly. Never call `np.random.*` directly.
-
----
-
-## Stage 1 — Data with known answers (`simulate.py`)
-
-| # | Do | Done when |
+| Bug | Fix | Source |
 |---|---|---|
-| 1 | Five component functions on `[0,1]`, each **centered** (`E[f]=0`) with its variance worked out by hand: linear, sine, quadratic, step, bump. A dict of `{name: (func, variance)}` is enough — no classes needed | each callable on a vector |
-| 2 | Scenario **S1**: `d=10`, features 0–4 get functions, 5–9 get `f=0`. Returns the function list and the vector `I_j` | `I_j` has exactly 5 nonzero entries |
-| 3 | `sample(n, rng)` → `(X, y)` with `X ~ U[0,1]^10`, `y = Σf_j(x_j) + N(0,σ²)`, `σ = sqrt(sum(I)/SNR)` | shapes right |
-| 4 | **TEST ①** analytic `I_j` vs Monte Carlo at `N=10^6` | agree within `4·stderr` |
-| 5 | **TEST ②** at `n=10^6`: `Var(y) ≈ sum(I_j) + σ²` | agrees to MC error |
+| A, deep trees absorb noise | grow shallower trees, **adaptively** | [SHL24] alpha-trimming |
+| B, same-data evaluation | measure the drop on **held-out** data | [ZH21] UFI |
 
-> Tests ① and ② are the foundation. If your ground truth is wrong, every number in the project is wrong and nothing downstream will tell you.
+Both fixes exist separately. **The contribution is combining them**, and *évaluer
+la pertinence* means the answer is allowed to come back negative.
 
----
+## Why this is not obvious
 
-## Stage 2 — The four forests (`forest.py`)
+Scornet's Theorem 3 holds **as k→∞**: for a *theoretical* tree, deeper is *better* —
+the population MDI converges to `Var(f_j(X_j))`. The bias is a finite-sample effect.
+So pruning cuts both ways:
 
-The four arms from SPEC §11:
+- it removes the noise absorption (good), but
+- it moves you to a shallower tree that has not resolved the signal yet, so the
+  measure **undershoots** (bad).
 
-| Arm | What |
-|---|---|
-| **A** | Full forest, MDI in-bag — what everyone does now |
-| **B** | Full forest, MDI on validation — isolates the held-out effect |
-| **C** | `min_samples_leaf` tuned by OOB, MDI on validation — shallower but *not* adaptive |
-| **D** | `ccp_alpha` tuned by OOB, MDI on validation — adaptive (alpha-trimming's stand-in) |
+We have now measured both halves. Pruning **helps** the in-bag measure and **hurts**
+the held-out one, consistently across scenarios and sample sizes. The two fixes
+partly work against each other.
 
-| # | Do | Done when |
+Worse, alpha is tuned by OOB **prediction** error while we care about **importance**
+error, and nothing says the same amount of pruning is best for both. That is why
+there is an oracle arm: without it, "pruning does not help importance" and "the
+tuning picked the wrong amount" are indistinguishable.
+
+## References
+
+| Tag | Paper | Used for |
 |---|---|---|
-| 6 | `build_full(X, y, seed)` → `RandomForestRegressor(min_samples_leaf=1, max_features=1/3, random_state=seed)` | fits |
-| 7 | Bootstrap bookkeeping — the fiddly bit, worth getting exactly right: <br>`from sklearn.ensemble._forest import _generate_sample_indices`<br>`idx = _generate_sample_indices(tree.random_state, n, n)`<br>`counts = np.bincount(idx, minlength=n)` → in-bag counts; OOB is `counts == 0` | returns `(B, n)` arrays |
-| 8 | **TEST ③** each row of counts sums to `n`; OOB fraction ≈ 0.368; `oob_mask == (counts == 0)` | exact |
-| 9 | `oob_mse(forest, X, y)` from your own masks. Then `build_global` and `build_pruned`: loop a grid, keep the argmin | selected value is in the grid |
-| 10 | **TEST ④** `ccp_alpha=0` gives the same `node_count` as Full at the same seed; and assert `0 ∈ ccp_grid`, `1 ∈ msl_grid` | exact |
+| [S20] | Scornet, *Trees, forests, and impurity-based variable importance in regression*, [arXiv:2001.04295](https://arxiv.org/abs/2001.04295), AIHP 59(1) 21–52, 2023 | why deep trees are wrong; the target `Var(f_j(X_j))` |
+| [ZH21] | Zhou & Hooker, *Unbiased Measurement of Feature Importance in Tree-Based Methods*, [arXiv:1903.05179](https://arxiv.org/abs/1903.05179), TKDD 15(2), 2021 | **UFI**, the measure in the brief |
+| [SHL24] | Surjanovic, Henrey & Loughin, *Alpha-Trimming*, [arXiv:2408.07151](https://arxiv.org/abs/2408.07151) | the adaptive pruning method |
+| [L19] | Li, Wang, Basu, Kumbier & Yu, *A Debiased MDI Feature Importance Measure*, [arXiv:1906.10845](https://arxiv.org/abs/1906.10845) | **MDI-oob**, the competing held-out measure |
 
-> Step 10's grid assertion means tuning can never do worse than Full. Two lines, saves a confusing afternoon.
+> arXiv:1903.05179 is **Zhou & Hooker**, not Li et al. — the two are often confused
+> because both attack training-sample bias. The brief points at UFI.
 
----
+## The measures
 
-## Stage 3 — The three measures (`mdi.py`)
+`mdi_train` — classic MDI, unnormalised. Never `feature_importances_`, which is
+normalised to sum to 1.
 
-| # | Do | Done when |
+`mdi_oob` [L19] — the same quantity re-evaluated off-sample:
+mean over held-out rows of `(mu_child − mu_parent) · y`, with every `mu` taken from
+the **in-bag** data.
+
+`ufi_half` [ZH21] — in-bag impurity drop **plus** the drop measured on held-out rows
+against the in-bag means.
+
+> **UFI runs at twice the scale.** For a real split both terms converge to the same
+> true impurity drop, so `UFI → 2·I_j` on signal features while noise still cancels
+> to 0. [ZH21] only ever rank with it, so the constant never mattered to them; we
+> compare numerically against `I_j`, so **it is halved everywhere**. Measured: raw
+> `ufi/I_j` ≈ 1.3–1.9, and `ufi_half` then tracks `mdi_oob` to within 2.5%.
+
+Two shared conventions: `y` is centred by the **training** mean, because the
+held-out measures are not shift-invariant (in-bag `Σ f_T,k = 0`, off-sample it is
+not); and **negative values are never clipped** — noise features must be free to
+come out negative.
+
+## The arms
+
+Five forests. `full`, `global`, `pruned` and `oracle` are built on the same
+training split, so comparing measures within a forest isolates the evaluation
+data and comparing forests within a measure isolates the pruning. `standard` is
+built on every point, because that is what practitioners actually do.
+
+| Arm | Forest | Role |
 |---|---|---|
-| 11 | `mdi_train(forest, counts)` — unnormalized, averaged over trees. **Never `feature_importances_`** (it's normalized to sum to 1) | matches `tree_.compute_feature_importances(normalize=False)` |
-| 12 | **TEST ⑤** on a Full forest, `sum(mdi_train) ≈ Var(y)` | this is Step 0's bug, now formal |
-| 13 | `mdi_oob(tree, X_eval, y_eval)` — the core formula, ~10 lines (sketch below) | returns a length-`d` vector |
-| 14 | **TEST ⑥ ★ the most important test in the project** — `mdi_oob` evaluated on the **in-bag** points (with bootstrap weights) reproduces `mdi_train` **exactly** | agrees to ~1e-9 |
-| 15 | `ufi(tree, X_eval, y_eval)` = in-bag impurity drop + the same drop measured on eval points against **in-bag** means | returns a length-`d` vector |
-| 16 | **TEST ⑦** at large `n`, high SNR: `ufi_j / I_j → 2` while `mdi_oob_j / I_j → 1`. Then **use `ufi/2` everywhere** | ratios as stated |
-| 17 | Centre `y` by the **training** mean before any out-of-sample measure. Never clip negatives — noise features must be free to come out negative | review |
+| `standard` | full, all `n` points | what everyone does now — the thing to beat |
+| `full` | full, training split | isolates the held-out effect |
+| `global` | `min_samples_leaf` by OOB | shallower but **not** adaptive |
+| `pruned` | `ccp_alpha` by OOB | adaptive — alpha-trimming's stand-in |
+| `oracle` | `ccp_alpha` by importance error | simulation only; bounds what pruning could deliver |
 
-The core formula, concretely:
+**`pruned` vs `global` is the whole project.** Is *adaptive* pruning better than
+merely *shallower* trees?
 
-```python
-def mdi_oob(tree, X_eval, y_eval, d):
-    t = tree.tree_
-    path = tree.decision_path(X_eval)          # sparse (n_eval, n_nodes)
-    mu = t.value[:, 0, 0]                      # in-bag node means
-    out = np.zeros(d)
-    for node in np.where(t.feature >= 0)[0]:   # internal nodes only
-        rows = path[:, node].nonzero()[0]      # eval points reaching it
-        if len(rows) == 0:
-            continue
-        L, R = t.children_left[node], t.children_right[node]
-        went_left = np.asarray(path[rows, L].todense()).ravel() > 0
-        mu_child = np.where(went_left, mu[L], mu[R])
-        out[t.feature[node]] += np.sum((mu_child - mu[node]) * y_eval[rows])
-    return out / len(X_eval)
-```
+`ccp_alpha` stands in for alpha-trimming because the brief says *par exemple*: it
+is adaptive, it is in scikit-learn today, and it let the pipeline reach real
+numbers without a from-scratch implementation first.
 
-> Test ⑥ is non-negotiable. It proves your node bookkeeping, your in-bag means and your routing are all correct in one shot. If it fails, **stop** — every later number is meaningless. If it passes, the hard part is behind you.
+## Status
 
----
+Built and tested: the simulator with analytic `I_j` (S1, S4), the five arms, the
+three measures, the full pruning path, metrics with Monte Carlo standard errors,
+paired Wilcoxon with bootstrap intervals and Holm, and six figures. 35 tests,
+`mypy --strict` clean.
 
-## Stage 4 — Run it (`experiment.py`)
-
-| # | Do | Done when |
-|---|---|---|
-| 18 | `run_one(n, rep)`: sample `D` (size `n`), split 2/3 train + 1/3 validation, build the four arms, compute their measures, return rows | `4 × d` rows |
-| 19 | Loop reps, concat, write `results.csv` | file exists |
-| 20 | Smoke run: `n=250`, `R=3`, `B=100` | minutes, no NaNs |
-| 21 | First real run: `n ∈ {250, 1000}`, `R=20`, `B=500` | the four-arm table |
-
-> **Stop at 21 and read the numbers.** Noise mass should be ≈0 for B/C/D and clearly positive for A. If it isn't, the bug is in Stage 3 — more scenarios will not reveal it.
-
----
-
-## Stage 5 — Analyse (`analyse.py`)
-
-All from `results.csv` with `groupby`. No new abstractions.
-
-| # | Do | Done when |
-|---|---|---|
-| 22 | Per feature: `bias = mean − I_j`, `var` (with **1/R**), `mse`. **TEST ⑧**: `mse == bias² + var` exactly — only true with the 1/R convention | exact |
-| 23 | Noise mass (signed **and** absolute), signal mass vs `sum(I_j)` | A overshoots by ≈σ² |
-| 24 | AUC signal-vs-noise (ties = 0.5), Kendall τ among signal features | sanity-checked on a handmade case |
-| 25 | Per-rep loss `L_r = Σ_j (M̂ − I_j)²`; **D vs C** paired: mean difference, 95% CI from `scipy.stats.bootstrap`, `scipy.stats.wilcoxon`, win rate | the headline number |
-| 26 | Summary table + two plots: bias–variance per feature, and MDI error vs pruning amount | — |
-
-**D vs C is the whole project.** Is *adaptive* pruning better than merely *shallower* trees? D≈C is a perfectly good answer; it just has to be a measured one.
-
----
-
-## Stage 6 — Only after Stage 5 works
+Remaining, in order:
 
 | # | Do | Why |
 |---|---|---|
-| 27 | **Oracle arm**: pick the pruning amount that minimises `Σ(M̂ − I_j)²` instead of OOB error. ~15 lines once Step 18 exists | Without it, "pruning doesn't help" and "the tuning picked the wrong amount" are indistinguishable (SPEC §1.1) |
-| 28 | **Scenario S4**: `I_j` across orders of magnitude, mixing smooth with step/localized functions | Where *locally* adaptive pruning should actually win — your best shot at a positive result |
-| 29 | **Real data**: California Housing + Diabetes, with `k` known-junk columns appended (permuted copies + i.i.d. noise). Measure noise mass and AUC real-vs-injected | Scornet asked for real data; no ground truth, so injected junk is the substitute |
-| 30 | **Alpha-trimming proper** ([SHL24] §4) replacing `ccp_alpha` in arm D | The paper's actual method. Re-read §4 by eye first — SPEC §5.4 was transcribed from an automated PDF read. Test `α=0` leaves the tree untouched, and reproduce one of their benchmarks before trusting it |
+| 1 | **Force a pruning range that actually prunes.** OOB picks no pruning in 40–60% of reps and tree size only falls to 76–82% of full, so `pruned` and `global` are near-copies of `full` and the headline question has nothing to bite on. Read the answer off the pruning-path figure rather than the OOB-selected point | otherwise the novelty claim is untestable |
+| 2 | **Validation-fraction sweep** — `--val-fraction 0.2 0.33 0.5` | at `n=250` the held-out set is 83 rows against ~106 leaves; untested |
+| 3 | **Real data**: California Housing + Diabetes with `k` known-junk columns appended (permuted copies, i.i.d. continuous, categorical). Measure noise mass and AUC real-vs-injected | the brief asks for real data; no ground truth, so injected junk is the substitute |
+| 4 | **Alpha-trimming proper** ([SHL24] §4) replacing `ccp_alpha` | the paper's actual method. Criterion: merge when `I_N + α·P_0 ≤ I_L + I_R + α·P_1`, with `I_N` an accumulated Gaussian log-likelihood, `P_0 = 2log n`, `P_1 = 5log n`, bottom-up, α on `{0, 0.1, …, 3.0}`, α=0 being the standard forest. Re-read §4 by eye first — this was transcribed from an automated PDF read. No public code; the authors work in Julia |
 
----
+## The tests that matter
 
-## The 6 tests that matter
+Six of the 35 carry the weight:
 
-Everything else is optional. These are not:
+| Test | Catches |
+|---|---|
+| analytic `I_j` vs Monte Carlo | wrong ground truth |
+| `Var(y) = ΣI_j + σ²` | wrong data generator |
+| bootstrap masks consistent | off-by-one in-bag/OOB — silent and fatal |
+| full forest `Σ mdi_train = Var(y)` | wrong MDI; also confirms we reproduced Bug A |
+| **`mdi_oob` weighted in-bag ≡ `mdi_train`** | all of the node bookkeeping, means and routing at once. Exact, to 4e-16 |
+| `ufi_half ≈ mdi_oob` | the factor-2 error that would corrupt every bias number |
 
-| | Test | Catches |
-|---|---|---|
-| ① | analytic `I_j` vs Monte Carlo | wrong ground truth |
-| ② | `Var(y) = ΣI_j + σ²` | wrong data generator |
-| ③ | bootstrap masks consistent | off-by-one in-bag/OOB — silent and fatal |
-| ⑤ | Full forest `sum(mdi_train) = Var(y)` | wrong MDI; also confirms you reproduced the known bug |
-| ⑥ | **`mdi_oob` in-bag ≡ `mdi_train`** | everything in Stage 3 at once |
-| ⑦ | `ufi/2 ≈ I_j` | a factor-2 error that would corrupt every bias number |
+## Reading the results
 
----
+`results/figures/` holds six per scenario. The two that carry the argument:
+
+- **`1_noise_mass`** — importance handed to features that have none. The bug and
+  the fix in one picture.
+- **`6_pruning_path`** — importance error against how hard we prune, with the
+  OOB-selected level marked. This is the depth tension made visible.
+
+Total MSE against `I_j` is **not** a sufficient headline. Each measure is nearly
+unbiased exactly where the other fails — `mdi_train` on signal, `mdi_oob` on noise —
+so total MSE can favour the biased measure purely through which error happens to be
+squared larger. Read noise mass and AUC alongside it. `median_diff` disagreeing in
+sign with `mean_diff` means the result is outlier-driven.
+
+## Open questions for Scornet
+
+1. **"Jeu de données de validation"** — a literal train/validation split, or
+   out-of-bag points? We implemented the split, which also removes any reuse
+   concern. OOB would be more sample-efficient.
+2. **UFI or MDI-oob?** The brief links Zhou & Hooker. We compute both; UFI is
+   currently the better performer.
+3. **Is the oracle arm in scope** — "does alpha-trimming as published help", or
+   "is there *any* pruning level that helps"? We assume both.
+4. **Classification?** All three papers cover it; this is regression-only.
 
 ## Deliberately left out
 
-Not oversights — add any of them only when you feel the actual pain:
-
-- **Parquet, separate metadata table** → one CSV is inspectable and fast enough at this size
-- **YAML config, dataclasses** → function arguments; two users don't need a config format
-- **Resumable runs** → add if a full run starts crashing midway
-- **`joblib` parallelism** → add when runtime annoys you, not before. Keep seeds per-rep so it stays reproducible
-- **CI-coverage calibration test** → `scipy` is already tested
-- **Pinned versions** → a `requirements.txt` with names is fine
-- **Protocol A (OOB instead of validation)**, MDI-oob *and* UFI everywhere, scenarios S2/S3/S5, correlated and interaction scenarios (S6/S7), the leakage check, `R=100` → all in SPEC, all off the critical path
-
----
-
-## One blocking question
-
-Does *"jeu de données de validation"* mean a literal train/validation split, or out-of-bag points? It changes Steps 18 and the arm definitions. **Ask Scornet before Step 18** — Steps 1–17 are unaffected, so there's no reason to wait to start.
+Add only when the pain is real: resumable runs, `joblib` parallelism, Parquet,
+config files, pinned versions, the leakage check (moot — alpha is chosen on OOB of
+the training split, the measure on the validation split, so there is no reuse),
+Protocol-A OOB-based measures, scenarios with correlated or interacting inputs
+(no ground truth there, so `Var(f_j(X_j))` stops being the target at all).
