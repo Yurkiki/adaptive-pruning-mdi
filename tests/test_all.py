@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from sklearn.tree import DecisionTreeRegressor
 
+import experiment
 import mdi
 import models
 import simulate
@@ -187,3 +188,14 @@ def test_model_measure_averages_its_trees(data) -> None:
     assert mdi.model_mdi_train(model, FEATURES) == pytest.approx(
         np.mean(per_tree, axis=0), abs=1e-12
     )
+
+
+# --- end to end ------------------------------------------------------------
+
+SMALL_RUN = experiment.RunConfig(n_reps=1, n_test=200)
+
+
+def test_runs_are_reproducible() -> None:
+    first = experiment.run_one(SCENARIO, 120, 0, SMALL_RUN)
+    second = experiment.run_one(SCENARIO, 120, 0, SMALL_RUN)
+    assert [r["value"] for r in first] == [r["value"] for r in second]
