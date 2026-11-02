@@ -56,9 +56,10 @@ def run_one(
     order = rng.permutation(n)
     val, train = order[:n_val], order[n_val:]
 
-    x_train, y_train = x[train], y[train]
-    x_val, y_val = x[val], y[val]
-    y_test = y_test_raw
+    centre = float(y[train].mean())
+    x_train, y_train = x[train], y[train] - centre
+    x_val, y_val = x[val], y[val] - centre
+    y_test = y_test_raw - centre
 
     ccp = models.pruning_path(models.CCP, x_train, y_train, setup, rep)
     fits = {
