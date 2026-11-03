@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 from sklearn.tree import DecisionTreeRegressor
 
+import analyse
 import experiment
 import mdi
 import models
@@ -188,6 +190,34 @@ def test_model_measure_averages_its_trees(data) -> None:
     assert mdi.model_mdi_train(model, FEATURES) == pytest.approx(
         np.mean(per_tree, axis=0), abs=1e-12
     )
+
+
+# --- metrics ---------------------------------------------------------------
+
+
+def test_mse_decomposes_into_bias_squared_plus_variance() -> None:
+    rng = np.random.default_rng(5)
+    frame = pd.DataFrame(
+        {
+            "scenario": "S1", "n": 100, "arm": "full", "measure": "mdi_oob",
+            "rep": np.repeat(np.arange(20), 3),
+            "feature": np.tile(np.arange(3), 20),
+            "value": rng.normal(size=60),
+            "true_importance": np.tile([0.5, 0.2, 0.0], 20),
+            "is_noise": np.tile([False, False, True], 20),
+        }
+    )
+    table = analyse.per_feature(frame)
+    assert table["mse"].to_numpy() == pytest.approx(
+        (table["bias"] ** 2 + table["variance"]).to_numpy(), abs=1e-12
+    )
+
+
+def test_auc_endpoints() -> None:
+    noise = np.array([False, False, True, True])
+    assert analyse.auc_signal_vs_noise(np.array([3.0, 4.0, 1.0, 2.0]), noise) == 1.0
+    assert analyse.auc_signal_vs_noise(np.array([1.0, 2.0, 3.0, 4.0]), noise) == 0.0
+    assert analyse.auc_signal_vs_noise(np.ones(4), noise) == 0.5
 
 
 # --- end to end ------------------------------------------------------------
