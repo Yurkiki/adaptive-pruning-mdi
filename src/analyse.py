@@ -1,4 +1,4 @@
-"""Bias, variance and the summary metrics, from the results CSV."""
+"""Metrics, paired comparisons and figures, all derived from the results CSVs."""
 
 from __future__ import annotations
 
@@ -112,6 +112,74 @@ def summary(frame: pd.DataFrame) -> pd.DataFrame:
 # --- paired comparison -----------------------------------------------------
 
 
+def compare(
+    reps: pd.DataFrame,
+    left: tuple[str, str],
+    right: tuple[str, str],
+    column: str = "loss",
+    n_boot: int = 10_000,
+    seed: int = 0,
+) -> dict[str, float | str]:
+    def series(arm: tuple[str, str]) -> pd.Series:
+        rows = reps[(reps["arm"] == arm[0]) & (reps["measure"] == arm[1])]
+        return rows.set_index("rep")[column].sort_index()
+
+    a, b = series(left), series(right)
+    shared = a.index.intersection(b.index)
+    diff = (a.loc[shared] - b.loc[shared]).to_numpy(dtype=np.float64)
+    if diff.size == 0:
+        return {"left": f"{left[0]}/{left[1]}", "right": f"{right[0]}/{right[1]}",
+                "mean_diff": float("nan"), "ci_low": float("nan"),
+                "ci_high": float("nan"), "left_wins": float("nan"),
+                "median_diff": float("nan"), "p_value": float("nan"), "n_pairs": 0.0}
+
+    rng = np.random.default_rng(seed)
+    draws = rng.choice(diff, size=(n_boot, diff.size), replace=True).mean(axis=1)
+    low, high = np.percentile(draws, [2.5, 97.5])
+    nonzero = diff[diff != 0.0]
+    p_value = float(stats.wilcoxon(nonzero).pvalue) if nonzero.size > 0 else float("nan")
+    return {
+        "left": f"{left[0]}/{left[1]}",
+        "right": f"{right[0]}/{right[1]}",
+        "mean_diff": float(diff.mean()),
+        "median_diff": float(np.median(diff)),
+        "ci_low": float(low),
+        "ci_high": float(high),
+        "left_wins": float((diff < 0).mean()),
+        "p_value": p_value,
+        "n_pairs": float(diff.size),
+    }
+
+
+def holm(p_values: FloatArray) -> FloatArray:
+    order = np.argsort(p_values)
+    m = p_values.size
+    adjusted = np.empty(m, dtype=np.float64)
+    running = 0.0
+    for rank, index in enumerate(order):
+        running = max(running, (m - rank) * p_values[index])
+        adjusted[index] = min(1.0, running)
+    return adjusted
+
+
+Comparison = tuple[tuple[str, str], tuple[str, str], str]
+
+HEADLINE: tuple[Comparison, ...] = (
+    (("full", "ufi_half"), ("full", "mdi_train"), "held out alone  [UFI]"),
+    (("full", "mdi_oob"), ("full", "mdi_train"), "held out alone  [MDI-oob]"),
+    (("full", "ufi_half"), ("full", "mdi_oob"), "UFI vs MDI-oob, same model"),
+)
+
+
+def comparison_table(reps: pd.DataFrame) -> pd.DataFrame:
+    rows = [compare(reps, a, b) | {"comparison": label} for a, b, label in HEADLINE]
+    out = pd.DataFrame(rows)
+    usable = out["p_value"].notna()
+    out["p_holm"] = np.nan
+    out.loc[usable, "p_holm"] = holm(out.loc[usable, "p_value"].to_numpy(dtype=np.float64))
+    return out
+
+
 # --- text report -----------------------------------------------------------
 
 
@@ -125,6 +193,22 @@ def report(frame: pd.DataFrame) -> None:
     for (scenario, n), block in table.groupby(["scenario", "n"], observed=True):
         print(f"\n=== {scenario}  n = {n} " + "=" * 60)
         print(block[show].to_string(index=False, float_format=lambda v: f"{v:8.4f}"))
+
+    reps = per_rep(frame)
+    for (scenario, n), block in reps.groupby(["scenario", "n"], sort=False):
+        print(f"\n=== {scenario}  n = {n}  paired comparisons " + "=" * 32)
+        out = comparison_table(block)
+        print(
+            out[["comparison", "mean_diff", "median_diff", "ci_low", "ci_high",
+                 "left_wins", "p_holm"]]
+            .to_string(index=False, float_format=lambda v: f"{v:8.4f}")
+        )
+    print("\n  mean_diff < 0 means the left arm has the lower loss (is better)")
+    print("  median_diff disagreeing in sign with mean_diff means outlier-driven")
+
+
+# --- figures ---------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)

@@ -220,6 +220,14 @@ def test_auc_endpoints() -> None:
     assert analyse.auc_signal_vs_noise(np.ones(4), noise) == 0.5
 
 
+def test_holm_is_monotone_and_at_least_raw() -> None:
+    raw = np.array([0.001, 0.02, 0.3, 0.04])
+    adjusted = analyse.holm(raw)
+    assert (adjusted >= raw).all()
+    order = np.argsort(raw)
+    assert (np.diff(adjusted[order]) >= -1e-12).all()
+
+
 # --- end to end ------------------------------------------------------------
 
 SMALL_RUN = experiment.RunConfig(n_reps=1, n_test=200)
