@@ -15,6 +15,13 @@ BoolArray = npt.NDArray[np.bool_]
 
 GROUP = ["scenario", "n", "arm", "measure"]
 
+SURFACE = "#fcfcfb"
+INK = "#0b0b0b"
+INK_SOFT = "#52514e"
+GRID = "#e6e5e1"
+SERIES = {"mdi_train": "#2a78d6", "mdi_oob": "#eb6834", "ufi_half": "#1baf7a"}
+ACCENT = "#4a3aa7"
+
 MEASURE_ORDER = ["mdi_train", "mdi_oob", "ufi_half"]
 ARM_ORDER = ["full", "global", "ccp"]
 
@@ -210,12 +217,111 @@ def report(frame: pd.DataFrame) -> None:
 # --- figures ---------------------------------------------------------------
 
 
+def _style(ax: object) -> None:
+    import matplotlib.axes
+
+    assert isinstance(ax, matplotlib.axes.Axes)
+    ax.set_facecolor(SURFACE)
+    ax.grid(True, color=GRID, linewidth=0.6, linestyle="-", zorder=0)
+    ax.set_axisbelow(True)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color(GRID)
+        ax.spines[side].set_linewidth(0.8)
+    ax.tick_params(colors=INK_SOFT, labelsize=8, length=3, width=0.8)
+    ax.title.set_color(INK)
+    ax.xaxis.label.set_color(INK_SOFT)
+    ax.yaxis.label.set_color(INK_SOFT)
+
+
+def plots(frame: pd.DataFrame, out_dir: Path) -> None:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.figure
+    import matplotlib.pyplot as plt
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    table = summary(frame)
+    features = per_feature(frame)
+    scenario = str(frame["scenario"].iloc[0])
+    sizes = sorted(frame["n"].unique())
+    n_noise = int(frame.loc[frame["is_noise"].astype(bool), "feature"].nunique())
+    written: list[Path] = []
+
+    def finish(fig: object, name: str) -> None:
+        assert isinstance(fig, matplotlib.figure.Figure)
+        fig.patch.set_facecolor(SURFACE)
+        fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.94))
+        target = out_dir / f"{scenario}_{name}.png"
+        fig.savefig(target, dpi=150, facecolor=SURFACE)
+        plt.close(fig)
+        written.append(target)
+
+    # 1. noise mass -- the bug and the fix, in one picture
+    fig, axes = plt.subplots(1, len(sizes), figsize=(5.2 * len(sizes), 4.2), squeeze=False)
+    for ax, n in zip(axes[0], sizes):
+        block = table[(table["n"] == n) & (table["arm"] == "full")]
+        block = block.sort_values("measure")
+        labels = block["measure"].astype(str).tolist()
+        heights = block["noise_mass"].to_numpy(dtype=np.float64)
+        errors = block["noise_mass_se"].to_numpy(dtype=np.float64)
+        colours = [SERIES[m] for m in labels]
+        bars = ax.bar(labels, heights, color=colours, width=0.55, zorder=3)
+        ax.errorbar(labels, heights, yerr=errors, fmt="none", ecolor=INK_SOFT,
+                    elinewidth=1.0, capsize=4, zorder=4)
+        ax.axhline(0.0, color=INK, linewidth=1.0, zorder=2)
+        for bar, value in zip(bars, heights):
+            ax.annotate(f"{value:.3f}", (bar.get_x() + bar.get_width() / 2, value),
+                        textcoords="offset points", xytext=(0, 6 if value >= 0 else -14),
+                        ha="center", fontsize=8, color=INK)
+        _style(ax)
+        ax.set_title(f"n = {n}", fontsize=10)
+        ax.set_ylabel(f"summed importance of the {n_noise} noise features")
+    fig.suptitle(
+        f"{scenario}: importance handed to features that have none (truth = 0)",
+        fontsize=11, color=INK,
+    )
+    finish(fig, "1_noise_mass")
+
+    # 2. recovery of the true importance, per feature
+    fig, axes = plt.subplots(1, len(sizes), figsize=(5.2 * len(sizes), 4.4), squeeze=False)
+    for ax, n in zip(axes[0], sizes):
+        block = features[(features["n"] == n) & (features["arm"] == "full")]
+        top = float(block["true_importance"].max()) * 1.15
+        ax.plot([0, top], [0, top], color=INK_SOFT, linewidth=1.0, zorder=2)
+        ax.annotate("perfect recovery", (top * 0.72, top * 0.76), fontsize=8,
+                    color=INK_SOFT, rotation=38)
+        for measure in MEASURE_ORDER:
+            rows = block[block["measure"] == measure]
+            ax.plot(rows["true_importance"], rows["mean_value"], linestyle="none",
+                    marker="o", markersize=8, color=SERIES[measure], label=measure,
+                    markeredgecolor=SURFACE, markeredgewidth=1.6, zorder=3)
+        _style(ax)
+        ax.set_title(f"n = {n}", fontsize=10)
+        ax.set_xlabel("true importance  $I_j$")
+        ax.set_ylabel("estimated importance")
+        ax.legend(frameon=False, fontsize=8, labelcolor=INK_SOFT)
+    fig.suptitle(f"{scenario}: recovery of the true importance", fontsize=11,
+                 color=INK)
+    finish(fig, "2_recovery")
+
+    for target in written:
+        print(f"  wrote {target}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results", type=Path, default=Path("results/results.csv"))
+    parser.add_argument("--figures", type=Path, default=Path("results/figures"))
+    parser.add_argument("--no-plots", action="store_true")
     args = parser.parse_args()
 
-    report(pd.read_csv(args.results))
+    frame = pd.read_csv(args.results)
+    report(frame)
+    if not args.no_plots:
+        plots(frame, args.figures)
 
 
 if __name__ == "__main__":
