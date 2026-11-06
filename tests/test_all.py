@@ -11,8 +11,9 @@ import analyse
 import experiment
 import mdi
 import models
+import prune
 import simulate
-from tree import TreeView, descend
+from tree import Model, TreeView, descend
 
 SCENARIO = simulate.scenario_s1()
 FEATURES = SCENARIO.n_features
@@ -190,6 +191,32 @@ def test_model_measure_averages_its_trees(data) -> None:
     assert mdi.model_mdi_train(model, FEATURES) == pytest.approx(
         np.mean(per_tree, axis=0), abs=1e-12
     )
+
+
+# --- alpha-trimming -------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def trimmable(data) -> Model:
+    """A tree grown at the node size the alpha-trimming paper assumes."""
+    x, y = data
+    return models.grow(x, y, FOREST, 0, min_samples_leaf=5).model
+
+
+def test_alpha_zero_is_the_unpruned_tree(trimmable) -> None:
+    view = trimmable.trees[0]
+    assert prune.alpha_trim(view, 0.0) is view
+
+
+def test_pruned_trees_stay_well_formed(data, trimmable) -> None:
+    x, _ = data
+    pruned = prune.alpha_trim(trimmable.trees[0], 1.0)
+    internal = pruned.feature >= 0
+    assert (pruned.children_left[internal] >= 0).all()
+    assert (pruned.children_right[internal] >= 0).all()
+    terminal = pruned.feature < 0
+    assert (pruned.children_left[terminal] == -1).all()
+    assert np.isfinite(pruned.predict(x)).all()
 
 
 # --- metrics ---------------------------------------------------------------
