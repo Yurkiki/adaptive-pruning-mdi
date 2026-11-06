@@ -14,6 +14,7 @@ import numpy as np
 import numpy.typing as npt
 from sklearn.ensemble import RandomForestRegressor
 
+import prune
 from tree import Model, TreeView
 
 FloatArray = npt.NDArray[np.float64]
@@ -26,6 +27,7 @@ class ModelConfig:
     max_features: float = 1.0 / 3.0
     min_samples_leaf_grid: tuple[int, ...] = (1, 2, 3, 5, 8, 13, 20, 30, 50, 80)
     ccp_fractions: tuple[float, ...] = (0.0, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2, 3e-2, 1e-1)
+    alpha_grid: tuple[float, ...] = (0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0)
     n_jobs: int = -1
 
     def __post_init__(self) -> None:
@@ -33,6 +35,8 @@ class ModelConfig:
             raise ValueError("min_samples_leaf grid must contain the unpruned case, 1")
         if 0.0 not in self.ccp_fractions:
             raise ValueError("ccp grid must contain the unpruned case, 0.0")
+        if 0.0 not in self.alpha_grid:
+            raise ValueError("alpha grid must contain the unpruned case, 0.0")
 
 
 @dataclass(frozen=True)
@@ -145,11 +149,24 @@ def _ccp_grow(
     return tuple(grow(x, y, config, seed, ccp_alpha=f * scale) for f in levels)
 
 
+def _alpha_levels(config: ModelConfig, n: int) -> tuple[float, ...]:
+    return config.alpha_grid
+
+
+def _alpha_grow(
+    x: FloatArray, y: FloatArray, config: ModelConfig, seed: int, levels: tuple[float, ...]
+) -> tuple[Forest, ...]:
+    """Alpha-trimming across the whole grid, from a single fit."""
+    base = grow(x, y, config, seed)
+    return tuple(Forest(prune.trim(base.model, a), base.in_bag) for a in levels)
+
+
 FULL = Family("full", _full_levels, _full_grow)
 GLOBAL = Family("global", _global_levels, _global_grow)
 CCP = Family("ccp", _ccp_levels, _ccp_grow)
+ALPHA = Family("alpha", _alpha_levels, _alpha_grow)
 
-FAMILIES: dict[str, Family] = {f.name: f for f in (FULL, GLOBAL, CCP)}
+FAMILIES: dict[str, Family] = {f.name: f for f in (FULL, GLOBAL, CCP, ALPHA)}
 
 
 @dataclass(frozen=True)

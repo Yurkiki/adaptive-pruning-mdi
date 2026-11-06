@@ -23,7 +23,7 @@ SERIES = {"mdi_train": "#2a78d6", "mdi_oob": "#eb6834", "ufi_half": "#1baf7a"}
 ACCENT = "#4a3aa7"
 
 MEASURE_ORDER = ["mdi_train", "mdi_oob", "ufi_half"]
-ARM_ORDER = ["full", "global", "ccp"]
+ARM_ORDER = ["full", "global", "ccp", "alpha"]
 
 
 # --- metrics ---------------------------------------------------------------
@@ -172,6 +172,8 @@ def holm(p_values: FloatArray) -> FloatArray:
 Comparison = tuple[tuple[str, str], tuple[str, str], str]
 
 HEADLINE: tuple[Comparison, ...] = (
+    (("alpha", "ufi_half"), ("global", "ufi_half"), "alpha-trimming vs global depth control"),
+    (("alpha", "ufi_half"), ("ccp", "ufi_half"), "alpha-trimming vs cost-complexity"),
     (("full", "ufi_half"), ("full", "mdi_train"), "held out alone  [UFI]"),
     (("full", "mdi_oob"), ("full", "mdi_train"), "held out alone  [MDI-oob]"),
     (("full", "ufi_half"), ("full", "mdi_oob"), "UFI vs MDI-oob, same model"),

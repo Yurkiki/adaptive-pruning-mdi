@@ -86,6 +86,8 @@ def test_grids_must_contain_the_unpruned_case() -> None:
         models.ModelConfig(min_samples_leaf_grid=(2, 5))
     with pytest.raises(ValueError):
         models.ModelConfig(ccp_fractions=(1e-3, 1e-2))
+    with pytest.raises(ValueError):
+        models.ModelConfig(alpha_grid=(0.5, 1.0))
 
 
 # --- cross-validated tuning ------------------------------------------------
@@ -217,6 +219,13 @@ def test_pruned_trees_stay_well_formed(data, trimmable) -> None:
     terminal = pruned.feature < 0
     assert (pruned.children_left[terminal] == -1).all()
     assert np.isfinite(pruned.predict(x)).all()
+
+
+def test_alpha_path_covers_the_grid_from_one_fit(data) -> None:
+    x, y = data
+    path = models.pruning_path(models.ALPHA, x, y, FOREST, 0)
+    assert path.levels == FOREST.alpha_grid
+    assert all(fit.name == "alpha" for fit in path.fits)
 
 
 # --- metrics ---------------------------------------------------------------

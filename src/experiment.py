@@ -62,10 +62,12 @@ def run_one(
     y_test = y_test_raw - centre
 
     ccp = models.pruning_path(models.CCP, x_train, y_train, setup, rep)
+    alpha = models.pruning_path(models.ALPHA, x_train, y_train, setup, rep)
     fits = {
         "full": models.build(models.FULL, x_train, y_train, setup, rep),
         "global": models.build(models.GLOBAL, x_train, y_train, setup, rep),
         "ccp": models.select_by_oob(ccp),
+        "alpha": models.select_by_oob(alpha),
     }
 
     rows: list[dict[str, object]] = []
