@@ -5,13 +5,17 @@ One row per (n, rep, arm, measure, feature).
 Every split-sample arm is built on the same training split, so comparing
 measures within an arm isolates the evaluation data and comparing arms within a
 measure isolates the pruning.
+
+alpha0 is the alpha arm at alpha = 0: same base model, no pruning. Comparing
+alpha against alpha0 isolates the pruning alone, because the alpha arm's base
+uses min_samples_leaf = 5 and so is not the same object as the full arm.
 """
 
 from __future__ import annotations
 
 import argparse
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -67,6 +71,7 @@ def run_one(
         "full": models.build(models.FULL, x_train, y_train, setup, rep),
         "global": models.build(models.GLOBAL, x_train, y_train, setup, rep),
         "ccp": models.select_by_oob(ccp),
+        "alpha0": replace(alpha.fits[0], name="alpha0"),
         "alpha": models.select_by_oob(alpha),
     }
 
