@@ -90,7 +90,7 @@ come out negative.
 
 ## The arms
 
-Five arms. All except `standard` are built on the same training split, so
+Six arms. All except `standard` are built on the same training split, so
 comparing measures within an arm isolates the evaluation data and comparing arms
 within a measure isolates the pruning. `standard` is built on every point,
 because that is what practitioners actually do.
@@ -101,13 +101,23 @@ because that is what practitioners actually do.
 | `full` | grown to purity, training split | isolates the held-out effect |
 | `global` | `min_samples_leaf` chosen out of bag | shallower but **not** adaptive |
 | `ccp` | cost-complexity `ccp_alpha` chosen out of bag | a second adaptive method |
+| `alpha0` | `min_samples_leaf = 5` base, no trimming | the clean baseline for `alpha` |
 | `alpha` | alpha-trimming, alpha chosen out of bag | **the method under study** |
 
 **`alpha` vs `global` is the whole project.** Is *adaptive* pruning better than
-merely *shallower* trees?
+merely *shallower* trees? `alpha` vs `alpha0` isolates the pruning alone.
 
 `alpha` is **alpha-trimming itself** ([SHL24] Algorithm 1), implemented in
 `src/prune.py` from the paper's section 3.1.
+
+> **Alpha-trimming needs leaves with variance in them.** Its merge test weighs the
+> single-mean model against the two-mean model, and a leaf grown to purity has
+> `sigma^2 = 0`, which sends the stump log-likelihood to infinity: the test can
+> never fire and pruning silently does nothing. The base tree for the `alpha`
+> arm therefore uses `min_samples_leaf = 5`, the node size [SHL24] treat as
+> fully grown. So `alpha = 0` is "unpruned" in *their* sense, which is not the
+> same object as our `full` arm; hence `alpha0`. A test pins this down:
+> `test_pure_leaves_make_alpha_trimming_inert`.
 
 
 ## To do
@@ -115,8 +125,8 @@ merely *shallower* trees?
 - [x] simulated data with a known true `I_j`
 - [x] MDI on the training data, to reproduce bug A
 - [x] the same drops measured on held-out data
-- [ ] alpha-trimming, from the paper's Algorithm 1
-- [ ] the arms, the metrics, the paired tests
+- [x] alpha-trimming, from the paper's Algorithm 1
+- [x] the arms, the metrics, the paired tests
 - [ ] real data with injected junk columns
 - [ ] a low-SNR scenario, which is where [SHL24] expect pruning to pay
 - [ ] reproduce one [SHL24] benchmark as a check on our transcription

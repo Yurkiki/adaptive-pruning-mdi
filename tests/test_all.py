@@ -100,6 +100,14 @@ def test_selection_takes_the_lowest_oob_error(data) -> None:
     assert chosen.oob_mse == min(fit.oob_mse for fit in path.fits)
 
 
+def test_pruning_beats_the_full_tree_out_of_bag(data) -> None:
+    """A lone fully grown tree overfits; some pruning level must predict better."""
+    x, y = data
+    full = models.build(models.FULL, x, y, FOREST, 0)
+    for family in (models.GLOBAL, models.CCP, models.ALPHA):
+        assert models.build(family, x, y, FOREST, 0).oob_mse < full.oob_mse
+
+
 # --- the importance measures ----------------------------------------------
 
 
@@ -202,7 +210,7 @@ def test_model_measure_averages_its_trees(data) -> None:
 def trimmable(data) -> Model:
     """A tree grown at the node size the alpha-trimming paper assumes."""
     x, y = data
-    return models.grow(x, y, FOREST, 0, min_samples_leaf=5).model
+    return models.grow(x, y, FOREST, 0, min_samples_leaf=FOREST.alpha_min_samples_leaf).model
 
 
 def test_alpha_zero_is_the_unpruned_tree(trimmable) -> None:
@@ -219,6 +227,17 @@ def test_pruned_trees_stay_well_formed(data, trimmable) -> None:
     terminal = pruned.feature < 0
     assert (pruned.children_left[terminal] == -1).all()
     assert np.isfinite(pruned.predict(x)).all()
+
+
+def test_pure_leaves_make_alpha_trimming_inert(data) -> None:
+    """Documents why the base tree is not grown to purity.
+
+    With zero within-leaf variance the stump log-likelihood diverges, the merge
+    test can never fire, and alpha-trimming silently does nothing.
+    """
+    x, y = data
+    pure = models.grow(x, y, FOREST, 0, min_samples_leaf=1).model
+    assert prune.trim(pure, 3.0).mean_leaves == pure.mean_leaves
 
 
 def test_alpha_path_covers_the_grid_from_one_fit(data) -> None:
