@@ -22,7 +22,12 @@ Transition = tuple[IndexArray, IndexArray, IndexArray, IndexArray]
 
 @dataclass(frozen=True)
 class TreeView:
-    """The tree arrays, detached from scikit-learn so that pruning can rewrite them."""
+    """The tree arrays, detached from scikit-learn so that pruning can rewrite them.
+
+    Pruning marks a node terminal by setting its feature to -2 and its children to
+    -1. The orphaned subtree stays in the arrays but is unreachable, so nothing
+    needs renumbering and every routine here keeps working unchanged.
+    """
 
     children_left: IntArray
     children_right: IntArray
@@ -49,7 +54,18 @@ class TreeView:
 
     @property
     def n_leaves(self) -> int:
-        return int((self.feature < 0).sum())
+        return int(self.reachable_leaves().sum())
+
+    def reachable_leaves(self) -> npt.NDArray[np.bool_]:
+        terminal = np.zeros(self.feature.size, dtype=bool)
+        stack = [0]
+        while stack:
+            node = stack.pop()
+            if self.feature[node] < 0:
+                terminal[node] = True
+            else:
+                stack.extend((self.children_left[node], self.children_right[node]))
+        return terminal
 
     def depth(self) -> int:
         deepest = 0

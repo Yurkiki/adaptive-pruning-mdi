@@ -144,6 +144,17 @@ def test_training_identity(data, full_tree) -> None:
     )
 
 
+def test_training_identity_holds_after_pruning(data) -> None:
+    x, y = data
+    base = DecisionTreeRegressor(
+        max_features=1.0, min_samples_leaf=5, random_state=0
+    ).fit(x, y)
+    view = prune.alpha_trim(TreeView.of(base), 1.0)
+    assert mdi.mdi_oob(view, x, y, FEATURES) == pytest.approx(
+        mdi.mdi_train(view, FEATURES), abs=1e-10
+    )
+
+
 def test_ufi_carries_twice_the_scale_of_mdi_oob() -> None:
     """Raw UFI runs at 2x on signal features, so we halve it. See the spec."""
     scenario = simulate.scenario_s1(sigma=0.15)
@@ -218,6 +229,17 @@ def test_alpha_zero_is_the_unpruned_tree(trimmable) -> None:
     assert prune.alpha_trim(view, 0.0) is view
 
 
+def test_pruning_is_monotone_in_alpha(trimmable) -> None:
+    sizes = [prune.trim(trimmable, a).mean_leaves for a in (0.0, 0.5, 1.0, 2.0, 3.0)]
+    assert sizes == sorted(sizes, reverse=True)
+    assert sizes[0] > sizes[-1]
+
+
+def test_alpha_trimming_reaches_small_trees(trimmable) -> None:
+    full = prune.trim(trimmable, 0.0).mean_leaves
+    assert prune.trim(trimmable, 3.0).mean_leaves < 0.25 * full
+
+
 def test_pruned_trees_stay_well_formed(data, trimmable) -> None:
     x, _ = data
     pruned = prune.alpha_trim(trimmable.trees[0], 1.0)
@@ -227,6 +249,26 @@ def test_pruned_trees_stay_well_formed(data, trimmable) -> None:
     terminal = pruned.feature < 0
     assert (pruned.children_left[terminal] == -1).all()
     assert np.isfinite(pruned.predict(x)).all()
+
+
+def test_pruning_leaves_no_orphaned_internal_nodes(trimmable) -> None:
+    """A split kept low down can be dissolved by a merge higher up.
+
+    Its descendants are then unreachable but would still carry feature >= 0, and
+    mdi_train sums over internal nodes rather than walking from the root, so it
+    would count them.
+    """
+    for alpha in (0.25, 0.5, 1.0, 2.0, 3.0):
+        pruned = prune.alpha_trim(trimmable.trees[0], alpha)
+        reachable = np.zeros(pruned.feature.size, dtype=bool)
+        stack = [0]
+        while stack:
+            node = stack.pop()
+            reachable[node] = True
+            if pruned.feature[node] >= 0:
+                stack.append(int(pruned.children_left[node]))
+                stack.append(int(pruned.children_right[node]))
+        assert not ((pruned.feature >= 0) & ~reachable).any()
 
 
 def test_pure_leaves_make_alpha_trimming_inert(data) -> None:
