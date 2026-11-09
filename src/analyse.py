@@ -23,7 +23,7 @@ SERIES = {"mdi_train": "#2a78d6", "mdi_oob": "#eb6834", "ufi_half": "#1baf7a"}
 ACCENT = "#4a3aa7"
 
 MEASURE_ORDER = ["mdi_train", "mdi_oob", "ufi_half"]
-ARM_ORDER = ["full", "global", "ccp", "alpha0", "alpha"]
+ARM_ORDER = ["full", "global", "ccp", "alpha0", "alpha", "oracle"]
 
 
 # --- metrics ---------------------------------------------------------------
@@ -179,6 +179,7 @@ HEADLINE: tuple[Comparison, ...] = (
     (("full", "ufi_half"), ("full", "mdi_train"), "held out alone  [UFI]"),
     (("full", "mdi_oob"), ("full", "mdi_train"), "held out alone  [MDI-oob]"),
     (("full", "ufi_half"), ("full", "mdi_oob"), "UFI vs MDI-oob, same model"),
+    (("oracle", "ufi_half"), ("alpha", "ufi_half"), "oracle vs the chosen alpha"),
 )
 
 
@@ -239,7 +240,7 @@ def _style(ax: object) -> None:
     ax.yaxis.label.set_color(INK_SOFT)
 
 
-def plots(frame: pd.DataFrame, out_dir: Path) -> None:
+def plots(frame: pd.DataFrame, path_frame: pd.DataFrame | None, out_dir: Path) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
@@ -311,6 +312,60 @@ def plots(frame: pd.DataFrame, out_dir: Path) -> None:
                  color=INK)
     finish(fig, "2_recovery")
 
+    # 6. does any pruning level help? the whole path, not just the chosen point
+    if path_frame is not None and len(path_frame) > 0:
+        methods = [m for m in ("alpha", "ccp") if m in set(path_frame["method"])]
+        fig, axes = plt.subplots(len(methods), len(sizes),
+                                 figsize=(5.6 * len(sizes), 4.2 * len(methods)),
+                                 squeeze=False)
+        for row, method in enumerate(methods):
+            for column, n in enumerate(sizes):
+                ax = axes[row][column]
+                block = path_frame[
+                    (path_frame["n"] == n) & (path_frame["method"] == method)
+                ]
+                levels = sorted(block["level"].unique())
+                position = {value: index for index, value in enumerate(levels)}
+                for measure in MEASURE_ORDER:
+                    rows = (
+                        block[block["measure"] == measure]
+                        .groupby("level", as_index=False)["importance_error"]
+                        .mean()
+                        .sort_values("level")
+                    )
+                    ax.plot([position[v] for v in rows["level"]],
+                            rows["importance_error"], marker="o", markersize=6,
+                            linewidth=1.8, color=SERIES[measure], label=measure,
+                            markeredgecolor=SURFACE, markeredgewidth=1.2, zorder=3)
+                picked = (
+                    block[block["measure"] == MEASURE_ORDER[0]]
+                    .loc[lambda d: d.groupby("rep")["oob_mse"].idxmin()]["level"]
+                )
+                chosen = float(np.median([position[v] for v in picked]))
+                ax.axvline(chosen, color=ACCENT, linewidth=1.6, zorder=2)
+                ax.annotate("CV picks here", (chosen, 0.03),
+                            xycoords=("data", "axes fraction"), fontsize=8,
+                            color=ACCENT, ha="center",
+                            bbox={"facecolor": SURFACE, "edgecolor": "none", "pad": 2})
+                sizes_at = (
+                    block.groupby("level")["mean_leaves"].mean().reindex(levels)
+                )
+                ax.set_xticks(range(len(levels)))
+                ax.set_xticklabels(
+                    [f"{v:g}\n{int(round(s))} lv" for v, s in zip(levels, sizes_at)],
+                    fontsize=7,
+                )
+                _style(ax)
+                label = "alpha-trimming" if method == "alpha" else "cost-complexity"
+                ax.set_title(f"{label},  n = {n}", fontsize=10)
+                ax.set_xlabel("alpha" if method == "alpha" else "ccp_alpha / Var(y)")
+                ax.set_ylabel("importance error  $\\sum_j (\\hat{M}_j - I_j)^2$")
+                if row == 0 and column == 0:
+                    ax.legend(frameon=False, fontsize=8, labelcolor=INK_SOFT)
+        fig.suptitle(f"{scenario}: importance error against how hard we prune",
+                     fontsize=11, color=INK)
+        finish(fig, "6_pruning_path")
+
     for target in written:
         print(f"  wrote {target}")
 
@@ -318,6 +373,7 @@ def plots(frame: pd.DataFrame, out_dir: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results", type=Path, default=Path("results/results.csv"))
+    parser.add_argument("--path", type=Path, default=None)
     parser.add_argument("--figures", type=Path, default=Path("results/figures"))
     parser.add_argument("--no-plots", action="store_true")
     args = parser.parse_args()
@@ -325,7 +381,9 @@ def main() -> None:
     frame = pd.read_csv(args.results)
     report(frame)
     if not args.no_plots:
-        plots(frame, args.figures)
+        candidate = args.path or args.results.with_name(args.results.stem + "_path.csv")
+        path_frame = pd.read_csv(candidate) if candidate.exists() else None
+        plots(frame, path_frame, args.figures)
 
 
 if __name__ == "__main__":

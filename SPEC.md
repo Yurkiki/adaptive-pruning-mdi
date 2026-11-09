@@ -50,6 +50,11 @@ So pruning cuts both ways:
 - it moves you to a shallower tree that has not resolved the signal yet, so the
   measure **undershoots** (bad).
 
+Worse, alpha is tuned by out-of-bag **prediction** error while we care about **importance**
+error, and nothing says the same amount of pruning is best for both. That is why
+there is an oracle arm: without it, "pruning does not help importance" and "the
+tuning picked the wrong amount" are indistinguishable.
+
 ## References
 
 | Tag | Paper | Used for |
@@ -90,7 +95,7 @@ come out negative.
 
 ## The arms
 
-Six arms. All except `standard` are built on the same training split, so
+Seven arms. All except `standard` are built on the same training split, so
 comparing measures within an arm isolates the evaluation data and comparing arms
 within a measure isolates the pruning. `standard` is built on every point,
 because that is what practitioners actually do.
@@ -103,6 +108,7 @@ because that is what practitioners actually do.
 | `ccp` | cost-complexity `ccp_alpha` chosen out of bag | a second adaptive method |
 | `alpha0` | `min_samples_leaf = 5` base, no trimming | the clean baseline for `alpha` |
 | `alpha` | alpha-trimming, alpha chosen out of bag | **the method under study** |
+| `oracle` | alpha chosen by importance error | simulation only; bounds what pruning could deliver |
 
 **`alpha` vs `global` is the whole project.** Is *adaptive* pruning better than
 merely *shallower* trees? `alpha` vs `alpha0` isolates the pruning alone.

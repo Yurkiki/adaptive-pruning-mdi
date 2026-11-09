@@ -1,6 +1,9 @@
-"""Run the experiment and write the results CSV.
+"""Run the experiment and write two long CSVs.
 
-One row per (n, rep, arm, measure, feature).
+results.csv  one row per (n, rep, arm, measure, feature)
+path.csv     one row per (n, rep, level, measure) -- importance error against the
+             amount of pruning, which is what shows whether CV picks a useful
+             pruning level at all
 
 Every split-sample arm is built on the same training split, so comparing
 measures within an arm isolates the evaluation data and comparing arms within a
@@ -34,6 +37,13 @@ COLUMNS = (
     "selected_param", "mean_leaves", "mean_depth",
 )
 
+PATH_COLUMNS = (
+    "scenario", "kind", "n", "rep", "method", "level", "measure",
+    "importance_error", "oob_mse", "test_mse", "mean_leaves",
+)
+
+ORACLE_MEASURE = "ufi_half"
+
 
 @dataclass(frozen=True)
 class RunConfig:
@@ -44,9 +54,33 @@ class RunConfig:
     model: models.ModelConfig = field(default_factory=models.ModelConfig)
 
 
+def importance_error(estimate: FloatArray, truth: FloatArray) -> float:
+    return float(((estimate - truth) ** 2).sum())
+
+
+def select_oracle(
+    path: models.PruningPath,
+    x_val: FloatArray,
+    y_val: FloatArray,
+    truth: FloatArray,
+) -> models.Fitted:
+    """Pick the pruning level that minimises importance error rather than CV error.
+
+    Only available in simulation. It bounds what pruning could deliver, so that a
+    null result for the honest arm can be read as "pruning does not help" or
+    "CV chose the wrong amount" rather than being ambiguous between the two.
+    """
+
+    def error(fit: models.Fitted) -> float:
+        estimate = mdi.all_measures(fit.model, x_val, y_val, truth.size)[ORACLE_MEASURE]
+        return importance_error(estimate, truth)
+
+    return replace(min(path.fits, key=error), name="oracle")
+
+
 def run_one(
     scenario: simulate.Scenario, n: int, rep: int, config: RunConfig
-) -> list[dict[str, object]]:
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     rng = np.random.default_rng(rep)
     n_features = scenario.n_features
     truth = scenario.true_importance
@@ -73,6 +107,7 @@ def run_one(
         "ccp": models.select_by_oob(ccp),
         "alpha0": replace(alpha.fits[0], name="alpha0"),
         "alpha": models.select_by_oob(alpha),
+        "oracle": select_oracle(alpha, x_val, y_val, truth),
     }
 
     rows: list[dict[str, object]] = []
@@ -104,26 +139,49 @@ def run_one(
         test_mse = float(np.mean((fit.model.predict(x_test) - y_test) ** 2))
         emit(arm, fit, mdi.all_measures(fit.model, x_val, y_val, n_features), test_mse)
 
-    return rows
+    path_rows: list[dict[str, object]] = []
+    for method, walked in (("ccp", ccp), ("alpha", alpha)):
+        for fit in walked.fits:
+            values = mdi.all_measures(fit.model, x_val, y_val, n_features)
+            test_mse = float(np.mean((fit.model.predict(x_test) - y_test) ** 2))
+            for measure, estimate in values.items():
+                path_rows.append(
+                    {
+                        "scenario": scenario.name, "kind": "forest", "n": n,
+                        "rep": rep, "method": method, "level": fit.selected_param,
+                        "measure": measure,
+                        "importance_error": importance_error(estimate, truth),
+                        "oob_mse": fit.oob_mse, "test_mse": test_mse,
+                        "mean_leaves": fit.mean_leaves,
+                    }
+                )
+
+    return rows, path_rows
 
 
-def run(config: RunConfig, out: Path) -> pd.DataFrame:
+def run(config: RunConfig, out: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     scenario = simulate.scenario_s1()
     rows: list[dict[str, object]] = []
+    path_rows: list[dict[str, object]] = []
     for n in config.sizes:
         start = time.perf_counter()
         for rep in range(config.n_reps):
-            rows.extend(run_one(scenario, n, rep, config))
+            new_rows, new_path = run_one(scenario, n, rep, config)
+            rows.extend(new_rows)
+            path_rows.extend(new_path)
         print(
             f"  {scenario.name} n={n:<5d} {config.n_reps} reps "
             f"in {time.perf_counter() - start:6.1f}s"
         )
 
     frame = pd.DataFrame(rows, columns=list(COLUMNS))
+    path_frame = pd.DataFrame(path_rows, columns=list(PATH_COLUMNS))
     out.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(out, index=False)
-    print(f"  wrote {len(frame)} rows to {out}")
-    return frame
+    path_out = out.with_name(out.stem + "_path.csv")
+    path_frame.to_csv(path_out, index=False)
+    print(f"  wrote {len(frame)} rows to {out} and {len(path_frame)} to {path_out}")
+    return frame, path_frame
 
 
 def main() -> None:

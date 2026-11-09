@@ -330,7 +330,40 @@ def test_holm_is_monotone_and_at_least_raw() -> None:
 SMALL_RUN = experiment.RunConfig(n_reps=1, n_test=200)
 
 
+def test_run_one_emits_every_arm_and_the_whole_pruning_path() -> None:
+    rows, path_rows = experiment.run_one(SCENARIO, 150, 0, SMALL_RUN)
+
+    arms = {"full", "global", "ccp", "alpha0", "alpha", "oracle"}
+    assert len(rows) == len(arms) * len(mdi.MEASURES) * FEATURES
+    assert {r["arm"] for r in rows} == arms
+    assert {r["kind"] for r in rows} == {"forest"}
+    assert set(rows[0]) == set(experiment.COLUMNS)
+    assert not any(np.isnan(float(r["value"])) for r in rows)
+
+    levels = len(FOREST.ccp_fractions) + len(FOREST.alpha_grid)
+    assert len(path_rows) == levels * len(mdi.MEASURES)
+    assert set(experiment.PATH_COLUMNS) == set(path_rows[0])
+    assert {r["method"] for r in path_rows} == {"ccp", "alpha"}
+
+
+def test_oracle_never_loses_to_the_chosen_pruning_level() -> None:
+    """The oracle picks on importance error, so by construction it cannot be worse."""
+    rows, _ = experiment.run_one(SCENARIO, 200, 0, SMALL_RUN)
+    frame = pd.DataFrame(rows)
+    truth = SCENARIO.true_importance
+
+    def error(arm: str) -> float:
+        values = (
+            frame[(frame["arm"] == arm) & (frame["measure"] == experiment.ORACLE_MEASURE)]
+            .sort_values("feature")["value"]
+            .to_numpy(dtype=np.float64)
+        )
+        return float(((values - truth) ** 2).sum())
+
+    assert error("oracle") <= error("alpha") + 1e-12
+
+
 def test_runs_are_reproducible() -> None:
-    first = experiment.run_one(SCENARIO, 120, 0, SMALL_RUN)
-    second = experiment.run_one(SCENARIO, 120, 0, SMALL_RUN)
+    first, _ = experiment.run_one(SCENARIO, 120, 0, SMALL_RUN)
+    second, _ = experiment.run_one(SCENARIO, 120, 0, SMALL_RUN)
     assert [r["value"] for r in first] == [r["value"] for r in second]
