@@ -7,7 +7,8 @@ path.csv     one row per (n, rep, level, measure) -- importance error against th
 
 Every split-sample arm is built on the same training split, so comparing
 measures within an arm isolates the evaluation data and comparing arms within a
-measure isolates the pruning.
+measure isolates the pruning. The standard arm is built on every point instead,
+because that is what practitioners actually do.
 
 alpha0 is the alpha arm at alpha = 0: same base model, no pruning. Comparing
 alpha against alpha0 isolates the pruning alone, because the alpha arm's base
@@ -109,6 +110,8 @@ def run_one(
         "alpha": models.select_by_oob(alpha),
         "oracle": select_oracle(alpha, x_val, y_val, truth),
     }
+    overall = float(y.mean())
+    standard = models.build(models.FULL, x, y - overall, setup, rep)
 
     rows: list[dict[str, object]] = []
     shared = {
@@ -138,6 +141,15 @@ def run_one(
     for arm, fit in fits.items():
         test_mse = float(np.mean((fit.model.predict(x_test) - y_test) ** 2))
         emit(arm, fit, mdi.all_measures(fit.model, x_val, y_val, n_features), test_mse)
+
+    standard_test = float(
+        np.mean((standard.model.predict(x_test) - (y_test_raw - overall)) ** 2)
+    )
+    emit(
+        "standard", standard,
+        {"mdi_train": mdi.model_mdi_train(standard.model, n_features)},
+        standard_test,
+    )
 
     path_rows: list[dict[str, object]] = []
     for method, walked in (("ccp", ccp), ("alpha", alpha)):

@@ -23,7 +23,7 @@ SERIES = {"mdi_train": "#2a78d6", "mdi_oob": "#eb6834", "ufi_half": "#1baf7a"}
 ACCENT = "#4a3aa7"
 
 MEASURE_ORDER = ["mdi_train", "mdi_oob", "ufi_half"]
-ARM_ORDER = ["full", "global", "ccp", "alpha0", "alpha", "oracle"]
+ARM_ORDER = ["standard", "full", "global", "ccp", "alpha0", "alpha", "oracle"]
 
 
 # --- metrics ---------------------------------------------------------------
@@ -179,6 +179,7 @@ HEADLINE: tuple[Comparison, ...] = (
     (("full", "ufi_half"), ("full", "mdi_train"), "held out alone  [UFI]"),
     (("full", "mdi_oob"), ("full", "mdi_train"), "held out alone  [MDI-oob]"),
     (("full", "ufi_half"), ("full", "mdi_oob"), "UFI vs MDI-oob, same model"),
+    (("alpha", "ufi_half"), ("standard", "mdi_train"), "new method vs standard practice"),
     (("oracle", "ufi_half"), ("alpha", "ufi_half"), "oracle vs the chosen alpha"),
 )
 

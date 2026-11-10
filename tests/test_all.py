@@ -333,9 +333,10 @@ SMALL_RUN = experiment.RunConfig(n_reps=1, n_test=200)
 def test_run_one_emits_every_arm_and_the_whole_pruning_path() -> None:
     rows, path_rows = experiment.run_one(SCENARIO, 150, 0, SMALL_RUN)
 
-    arms = {"full", "global", "ccp", "alpha0", "alpha", "oracle"}
-    assert len(rows) == len(arms) * len(mdi.MEASURES) * FEATURES
-    assert {r["arm"] for r in rows} == arms
+    split_arms = {"full", "global", "ccp", "alpha0", "alpha", "oracle"}
+    expected = (len(split_arms) * len(mdi.MEASURES) + 1) * FEATURES
+    assert len(rows) == expected
+    assert {r["arm"] for r in rows} == split_arms | {"standard"}
     assert {r["kind"] for r in rows} == {"forest"}
     assert set(rows[0]) == set(experiment.COLUMNS)
     assert not any(np.isnan(float(r["value"])) for r in rows)
@@ -363,7 +364,24 @@ def test_oracle_never_loses_to_the_chosen_pruning_level() -> None:
     assert error("oracle") <= error("alpha") + 1e-12
 
 
+def test_standard_arm_uses_every_point() -> None:
+    rows, _ = experiment.run_one(SCENARIO, 300, 0, SMALL_RUN)
+    frame = pd.DataFrame(rows)
+    standard = frame[frame["arm"] == "standard"]["mean_leaves"].iloc[0]
+    split = frame[frame["arm"] == "full"]["mean_leaves"].iloc[0]
+    assert standard > split
+    assert set(frame[frame["arm"] == "standard"]["measure"]) == {"mdi_train"}
+
+
 def test_runs_are_reproducible() -> None:
     first, _ = experiment.run_one(SCENARIO, 120, 0, SMALL_RUN)
     second, _ = experiment.run_one(SCENARIO, 120, 0, SMALL_RUN)
     assert [r["value"] for r in first] == [r["value"] for r in second]
+
+
+def test_summary_reports_standard_errors_and_relative_loss() -> None:
+    rows = [r for rep in range(3) for r in experiment.run_one(SCENARIO, 120, rep, SMALL_RUN)[0]]
+    table = analyse.summary(pd.DataFrame(rows))
+    for column in ("total_mse_se", "noise_mass_se", "relative_loss", "excess_risk"):
+        assert column in table
+    assert (table["total_mse_se"] >= 0).all()
