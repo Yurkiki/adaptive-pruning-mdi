@@ -251,6 +251,7 @@ def plots(frame: pd.DataFrame, path_frame: pd.DataFrame | None, out_dir: Path) -
     out_dir.mkdir(parents=True, exist_ok=True)
     table = summary(frame)
     features = per_feature(frame)
+    reps = per_rep(frame)
     scenario = str(frame["scenario"].iloc[0])
     sizes = sorted(frame["n"].unique())
     n_noise = int(frame.loc[frame["is_noise"].astype(bool), "feature"].nunique())
@@ -312,6 +313,74 @@ def plots(frame: pd.DataFrame, path_frame: pd.DataFrame | None, out_dir: Path) -
     fig.suptitle(f"{scenario}: recovery of the true importance", fontsize=11,
                  color=INK)
     finish(fig, "2_recovery")
+
+    # 3. is the error bias or variance?
+    fig, axes = plt.subplots(1, len(sizes), figsize=(5.2 * len(sizes), 4.2), squeeze=False)
+    for ax, n in zip(axes[0], sizes):
+        block = features[(features["n"] == n) & (features["arm"] == "full")]
+        agg = block.groupby("measure", observed=True).apply(
+            lambda g: pd.Series(
+                {"bias2": float((g["bias"] ** 2).sum()), "variance": float(g["variance"].sum())}
+            ),
+            include_groups=False,
+        ).reindex(MEASURE_ORDER)
+        ax.bar(agg.index.astype(str), agg["bias2"], color=SERIES["mdi_train"],
+               width=0.55, label="bias$^2$", zorder=3)
+        ax.bar(agg.index.astype(str), agg["variance"], bottom=agg["bias2"],
+               color=SERIES["ufi_half"], width=0.55, label="variance",
+               edgecolor=SURFACE, linewidth=2.0, zorder=3)
+        _style(ax)
+        ax.set_title(f"n = {n}", fontsize=10)
+        ax.set_ylabel("total MSE against $I_j$")
+        ax.legend(frameon=False, fontsize=8, labelcolor=INK_SOFT)
+    fig.suptitle(f"{scenario}: how the error splits into bias and variance",
+                 fontsize=11, color=INK)
+    finish(fig, "3_bias_vs_variance")
+
+    # 4. paired comparisons
+    fig, axes = plt.subplots(1, len(sizes), figsize=(6.6 * len(sizes), 4.6), squeeze=False)
+    for ax, n in zip(axes[0], sizes):
+        out = comparison_table(reps[reps["n"] == n]).iloc[::-1]
+        positions = np.arange(len(out))
+        significant = out["p_holm"].to_numpy(dtype=np.float64) < 0.05
+        colours = [ACCENT if s else INK_SOFT for s in significant]
+        for pos, row, colour in zip(positions, out.itertuples(), colours):
+            ax.plot([row.ci_low, row.ci_high], [pos, pos], color=colour, linewidth=2.0,
+                    solid_capstyle="round", zorder=3)
+            ax.plot(row.mean_diff, pos, marker="o", markersize=8, color=colour,
+                    markeredgecolor=SURFACE, markeredgewidth=1.4, zorder=4)
+        ax.axvline(0.0, color=INK, linewidth=1.0, zorder=2)
+        ax.set_yticks(positions)
+        ax.set_yticklabels(out["comparison"], fontsize=8)
+        _style(ax)
+        ax.set_title(f"n = {n}   (filled = significant after Holm)", fontsize=10)
+        ax.set_xlabel("mean paired difference in loss   (negative = left arm better)")
+    fig.suptitle(f"{scenario}: paired comparisons with 95% bootstrap intervals",
+                 fontsize=11, color=INK)
+    finish(fig, "4_comparisons")
+
+    # 5. per-feature bias
+    fig, axes = plt.subplots(1, len(sizes), figsize=(5.2 * len(sizes), 4.2), squeeze=False)
+    for ax, n in zip(axes[0], sizes):
+        block = features[(features["n"] == n) & (features["arm"] == "full")]
+        for measure in MEASURE_ORDER:
+            rows = block[block["measure"] == measure].sort_values("feature")
+            ax.plot(rows["feature"], rows["bias"], marker="o", markersize=6,
+                    linewidth=1.6, color=SERIES[measure], label=measure,
+                    markeredgecolor=SURFACE, markeredgewidth=1.2, zorder=3)
+        ax.axhline(0.0, color=INK, linewidth=1.0, zorder=2)
+        n_signal = int((~block["is_noise"]).sum() / block["measure"].nunique())
+        ax.axvspan(n_signal - 0.5, block["feature"].max() + 0.5, color=GRID, alpha=0.6,
+                   zorder=1)
+        ax.annotate("noise features", (n_signal + 0.1, ax.get_ylim()[1] * 0.85),
+                    fontsize=8, color=INK_SOFT)
+        _style(ax)
+        ax.set_title(f"n = {n}", fontsize=10)
+        ax.set_xlabel("feature")
+        ax.set_ylabel("bias")
+        ax.legend(frameon=False, fontsize=8, labelcolor=INK_SOFT)
+    fig.suptitle(f"{scenario}: where each measure goes wrong", fontsize=11, color=INK)
+    finish(fig, "5_bias_by_feature")
 
     # 6. does any pruning level help? the whole path, not just the chosen point
     if path_frame is not None and len(path_frame) > 0:
