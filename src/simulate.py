@@ -72,7 +72,7 @@ def rescaled(component: Component, variance: float) -> Component:
 class Scenario:
     name: str
     components: tuple[Component, ...]
-    sigma: float
+    snr: float
 
     @property
     def n_features(self) -> int:
@@ -86,13 +86,17 @@ class Scenario:
     def is_noise(self) -> BoolArray:
         return np.asarray(self.true_importance == 0.0, dtype=np.bool_)
 
+    @property
+    def sigma(self) -> float:
+        return float(np.sqrt(self.true_importance.sum() / self.snr))
 
-def scenario_s1(sigma: float = 0.5, n_noise: int = 5) -> Scenario:
+
+def scenario_s1(snr: float = 4.0, n_noise: int = 5) -> Scenario:
     """Baseline: five smooth signals of comparable size plus pure-noise features."""
-    return Scenario("S1", SIGNAL_LIBRARY + (NOISE,) * n_noise, sigma)
+    return Scenario(f"S1_snr{snr:g}", SIGNAL_LIBRARY + (NOISE,) * n_noise, snr)
 
 
-def scenario_s4(sigma: float = 0.5, n_noise: int = 5) -> Scenario:
+def scenario_s4(snr: float = 4.0, n_noise: int = 5) -> Scenario:
     """Heterogeneous signal: true importances spanning two orders of magnitude.
 
     A constant ratio of 3 between consecutive components. The weakest is 0.02
@@ -105,11 +109,11 @@ def scenario_s4(sigma: float = 0.5, n_noise: int = 5) -> Scenario:
     signals = tuple(
         rescaled(c, t) for c, t in zip(SIGNAL_LIBRARY, targets, strict=True)
     )
-    return Scenario("S4", signals + (NOISE,) * n_noise, sigma)
+    return Scenario(f"S4_snr{snr:g}", signals + (NOISE,) * n_noise, snr)
 
 
 class ScenarioFactory(Protocol):
-    def __call__(self, sigma: float = ..., n_noise: int = ...) -> Scenario: ...
+    def __call__(self, snr: float = ..., n_noise: int = ...) -> Scenario: ...
 
 
 SCENARIOS: dict[str, ScenarioFactory] = {

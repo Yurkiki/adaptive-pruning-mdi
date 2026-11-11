@@ -166,7 +166,7 @@ def test_training_identity_holds_after_pruning(data) -> None:
 
 def test_ufi_carries_twice_the_scale_of_mdi_oob() -> None:
     """Raw UFI runs at 2x on signal features, so we halve it. See the spec."""
-    scenario = simulate.scenario_s1(sigma=0.15)
+    scenario = simulate.scenario_s1(snr=50.0)
     rng = np.random.default_rng(7)
     x, y = simulate.sample(scenario, 4000, rng)
     x_val, y_val = simulate.sample(scenario, 4000, rng)
@@ -181,7 +181,7 @@ def test_ufi_carries_twice_the_scale_of_mdi_oob() -> None:
 
 
 def test_out_of_sample_measures_give_noise_features_nothing() -> None:
-    scenario = simulate.scenario_s1()
+    scenario = simulate.scenario_s1(snr=4.0)
     rng = np.random.default_rng(8)
     x, y = simulate.sample(scenario, 2000, rng)
     x_val, y_val = simulate.sample(scenario, 2000, rng)
