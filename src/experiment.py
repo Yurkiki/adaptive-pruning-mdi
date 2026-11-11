@@ -48,6 +48,7 @@ ORACLE_MEASURE = "ufi_half"
 
 @dataclass(frozen=True)
 class RunConfig:
+    scenario: str = "S1"
     sizes: tuple[int, ...] = (250, 1000)
     n_reps: int = 20
     val_fraction: float = 1.0 / 3.0
@@ -172,7 +173,7 @@ def run_one(
 
 
 def run(config: RunConfig, out: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    scenario = simulate.scenario_s1()
+    scenario = simulate.SCENARIOS[config.scenario]()
     rows: list[dict[str, object]] = []
     path_rows: list[dict[str, object]] = []
     for n in config.sizes:
@@ -182,7 +183,7 @@ def run(config: RunConfig, out: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
             rows.extend(new_rows)
             path_rows.extend(new_path)
         print(
-            f"  {scenario.name} n={n:<5d} {config.n_reps} reps "
+            f"  {config.scenario} n={n:<5d} {config.n_reps} reps "
             f"in {time.perf_counter() - start:6.1f}s"
         )
 
@@ -198,6 +199,7 @@ def run(config: RunConfig, out: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--scenario", default="S1", choices=sorted(simulate.SCENARIOS))
     parser.add_argument("--sizes", type=int, nargs="+", default=[250, 1000])
     parser.add_argument("--reps", type=int, default=20)
     parser.add_argument("--trees", type=int, default=500)
@@ -207,6 +209,7 @@ def main() -> None:
 
     run(
         RunConfig(
+            scenario=args.scenario,
             sizes=tuple(args.sizes),
             n_reps=args.reps,
             val_fraction=args.val_fraction,

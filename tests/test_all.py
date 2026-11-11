@@ -56,6 +56,15 @@ def test_variance_decomposition() -> None:
     assert float(y.var()) == pytest.approx(expected, rel=0.01)
 
 
+def test_rescaled_component_hits_target_variance() -> None:
+    scaled = simulate.rescaled(simulate.SINE, 0.004)
+    estimate, stderr = simulate.monte_carlo_variance(
+        scaled, 1_000_000, np.random.default_rng(4)
+    )
+    assert scaled.variance == 0.004
+    assert abs(estimate - 0.004) < 4.0 * stderr
+
+
 # --- model construction ----------------------------------------------------
 
 

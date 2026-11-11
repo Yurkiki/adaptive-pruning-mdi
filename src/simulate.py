@@ -55,6 +55,19 @@ NOISE = Component("noise", _zero, 0.0)
 SIGNAL_LIBRARY: tuple[Component, ...] = (LINEAR, SINE, QUADRATIC, STEP, BUMP)
 
 
+def rescaled(component: Component, variance: float) -> Component:
+    """Same shape, scaled so that Var(f(X)) equals `variance`."""
+    if component.variance <= 0.0:
+        raise ValueError("cannot rescale a zero-variance component")
+    k = float(np.sqrt(variance / component.variance))
+    base = component.func
+
+    def scaled(x: FloatArray) -> FloatArray:
+        return k * base(x)
+
+    return Component(f"{component.name}*{k:.4g}", scaled, variance)
+
+
 @dataclass(frozen=True)
 class Scenario:
     name: str
@@ -77,6 +90,32 @@ class Scenario:
 def scenario_s1(sigma: float = 0.5, n_noise: int = 5) -> Scenario:
     """Baseline: five smooth signals of comparable size plus pure-noise features."""
     return Scenario("S1", SIGNAL_LIBRARY + (NOISE,) * n_noise, sigma)
+
+
+def scenario_s4(sigma: float = 0.5, n_noise: int = 5) -> Scenario:
+    """Heterogeneous signal: true importances spanning two orders of magnitude.
+
+    A constant ratio of 3 between consecutive components. The weakest is 0.02
+    against a noise variance near 0.6, so it sits close to the detection limit
+    deliberately: a good measure should call it small but non-zero rather than
+    zero. That also caps the achievable signal-versus-noise AUC in this
+    scenario, which is why Kendall tau matters more here.
+    """
+    targets = (1.62, 0.54, 0.18, 0.06, 0.02)
+    signals = tuple(
+        rescaled(c, t) for c, t in zip(SIGNAL_LIBRARY, targets, strict=True)
+    )
+    return Scenario("S4", signals + (NOISE,) * n_noise, sigma)
+
+
+class ScenarioFactory(Protocol):
+    def __call__(self, sigma: float = ..., n_noise: int = ...) -> Scenario: ...
+
+
+SCENARIOS: dict[str, ScenarioFactory] = {
+    "S1": scenario_s1,
+    "S4": scenario_s4,
+}
 
 
 def sample(
