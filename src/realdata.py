@@ -6,8 +6,10 @@ known to be irrelevant and see how much importance each measure hands them.
 A measure that gives the injected columns ~0 is behaving; one that does not is
 exhibiting the bias on data we did not generate.
 
-Three kinds of junk are injected: permuted copies of real columns, continuous
-noise, and categorical noise with many levels.
+Three kinds of junk are injected, because they fail in different ways:
+permuted copies of real columns keep the marginal distribution and so are the
+hardest case; continuous noise is the easy case; categorical noise with many
+levels is the classic cardinality trap for in-bag MDI.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ import numpy.typing as npt
 import pandas as pd
 from sklearn.datasets import fetch_california_housing, load_diabetes
 
+import analyse
 import mdi
 import models
 
@@ -130,6 +133,56 @@ def run_one(
     return rows
 
 
+def summarise(frame: pd.DataFrame) -> pd.DataFrame:
+    """Noise mass and separation, per arm. No ground truth, so no bias or MSE."""
+    records: list[dict[str, object]] = []
+    for key, group in frame.groupby(["dataset", "arm", "measure", "rep"], sort=False):
+        ordered = group.sort_values("feature")
+        values = ordered["value"].to_numpy(dtype=np.float64)
+        injected = ordered["is_injected"].to_numpy(dtype=bool)
+        total = float(np.abs(values).sum())
+        records.append(
+            dict(zip(["dataset", "arm", "measure", "rep"], key))
+            | {
+                "injected_mass": float(values[injected].sum()),
+                "injected_share": float(np.abs(values[injected]).sum() / total)
+                if total > 0 else float("nan"),
+                "auc": analyse.auc_signal_vs_noise(values, injected),
+                "test_mse": float(group["test_mse"].iloc[0]),
+                "mean_leaves": float(group["mean_leaves"].iloc[0]),
+            }
+        )
+    per_rep = pd.DataFrame(records)
+    keys = ["dataset", "arm", "measure"]
+    columns = ["injected_mass", "injected_share", "auc", "test_mse", "mean_leaves"]
+    grouped = per_rep.groupby(keys, as_index=False)
+    out = grouped.agg(**{c: (c, "mean") for c in columns})
+    errors = grouped.agg(
+        **{f"{c}_se": (c, lambda s: float(s.std(ddof=1) / np.sqrt(s.size)))
+           for c in ("injected_mass", "injected_share", "auc")}
+    )
+    return out.merge(errors, on=keys)
+
+
+def stability(frame: pd.DataFrame) -> pd.DataFrame:
+    """Mean pairwise Kendall tau between repetitions -- does the ranking hold still?"""
+    from scipy import stats
+
+    records: list[dict[str, object]] = []
+    for key, group in frame.groupby(["dataset", "arm", "measure"], sort=False):
+        wide = group.pivot_table(index="feature", columns="rep", values="value")
+        taus = [
+            float(stats.kendalltau(wide.iloc[:, a], wide.iloc[:, b]).statistic)
+            for a in range(wide.shape[1])
+            for b in range(a + 1, wide.shape[1])
+        ]
+        records.append(
+            dict(zip(["dataset", "arm", "measure"], key))
+            | {"rank_stability": float(np.mean(taus)) if taus else float("nan")}
+        )
+    return pd.DataFrame(records)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--datasets", nargs="+", default=list(DATASETS))
@@ -148,3 +201,20 @@ def main() -> None:
     frame = pd.DataFrame(rows, columns=list(COLUMNS))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(args.out, index=False)
+
+    table = summarise(frame).merge(stability(frame), on=["dataset", "arm", "measure"])
+    table["arm"] = pd.Categorical(table["arm"], analyse.ARM_ORDER, ordered=True)
+    table["measure"] = pd.Categorical(table["measure"], analyse.MEASURE_ORDER, ordered=True)
+    for dataset, block in table.groupby("dataset", observed=True):
+        print(f"\n=== {dataset} " + "=" * 62)
+        print(
+            block.sort_values(["arm", "measure"])
+            .drop(columns="dataset")
+            .to_string(index=False, float_format=lambda v: f"{v:8.4f}")
+        )
+    print("\n  injected_share: fraction of total importance given to known-junk columns")
+    print("  auc: separation of real features from injected ones (1.0 is perfect)")
+
+
+if __name__ == "__main__":
+    main()
