@@ -3,7 +3,7 @@
 Does a variable importance measured on **adaptively pruned** forests and
 evaluated on **held-out data** beat the standard MDI?
 
-**Start with [SPEC.md](SPEC.md)** — the problem, the aim, the measures and what is
+**Start with [PROTOCOL.md](PROTOCOL.md)** — the problem, the aim, the measures and what is
 left to run.
 
 ## Setup

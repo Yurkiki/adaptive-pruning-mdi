@@ -1,4 +1,4 @@
-# SPEC
+# PROTOCOL
 
 ## The problem
 
@@ -135,6 +135,29 @@ trees to 76-82% of full, so `ccp` and `global` were near-copies of `full`, while
 alpha-trimming spanned the real range (41 leaves at `alpha = 0`, 20 at `alpha = 1`,
 6 at `alpha = 2`).
 
+## Status
+
+Every clause of the brief now has code behind it:
+
+| His words | Where |
+|---|---|
+| arbres moins profonds, de manière adaptative | `src/prune.py` — alpha-trimming, plus cost-complexity as a second adaptive method |
+| calculé sur un jeu de données de validation | `src/experiment.py` — literal train/validation split; pruning tuned out of bag |
+| jeux de données simulées | `src/simulate.py` — S1, S4, with analytic `I_j` |
+| jeux de données réelles | `src/realdata.py` — diabetes, California Housing, with injected junk columns |
+| évaluer la pertinence | `src/analyse.py` — metrics, paired tests, six figures |
+
+41 tests. Model code: `src/tree.py` (tree arrays, `Model`), `src/models.py` (families, OOB tuning).
+
+Remaining, in order:
+
+| # | Do | Why |
+|---|---|---|
+| 1 | **Validation-fraction sweep** — `--val-fraction 0.2 0.33 0.5` | at `n=250` the held-out set is 83 rows against 167 leaves in the full tree; untested |
+| 2 | **Low-SNR scenario.** [SHL24] say pruning pays off most when the signal-to-noise ratio is low, and every run so far is at SNR = 4 | the condition their method is designed for is the one we have not tried |
+| 3 | **A finer alpha grid** `{0, 0.1, ..., 3.0}` for final numbers (`ModelConfig.alpha_grid`) | runs use a 9-point grid for speed |
+| 4 | **Reproduce one [SHL24] benchmark** | independent check that our transcription of Algorithm 1 is faithful |
+
 ## What we found
 
 Ordered by how much I would stake on it.
@@ -212,6 +235,21 @@ Six of the 41 carry the weight:
 | **`mdi_oob` on the training rows ≡ `mdi_train`** | all of the node bookkeeping, means and routing at once. Exact, to 4e-16 |
 | `ufi_half ≈ mdi_oob` | the factor-2 error that would corrupt every bias number |
 
+## Reading the results
+
+`results/figures/` holds six per scenario. The two that carry the argument:
+
+- **`1_noise_mass`** — importance handed to features that have none. The bug and
+  the fix in one picture.
+- **`6_pruning_path`** — importance error against how hard we prune, with the
+  CV-selected level marked. This is the depth tension made visible.
+
+Total MSE against `I_j` is **not** a sufficient headline. Each measure is nearly
+unbiased exactly where the other fails — `mdi_train` on signal, `mdi_oob` on noise —
+so total MSE can favour the biased measure purely through which error happens to be
+squared larger. Read noise mass and AUC alongside it. `median_diff` disagreeing in
+sign with `mean_diff` means the result is outlier-driven.
+
 ## Open questions for Scornet
 
 1. **"Jeu de données de validation"** — a literal train/validation split, or
@@ -222,15 +260,10 @@ Six of the 41 carry the weight:
 3. **Is the oracle arm in scope** — "does alpha-trimming as published help", or
    "is there *any* pruning level that helps"? We assume both.
 4. **Classification?** All three papers cover it; this is regression-only.
+## Deliberately left out
 
-
-## To do
-
-- [x] simulated data with a known true `I_j`
-- [x] MDI on the training data, to reproduce bug A
-- [x] the same drops measured on held-out data
-- [x] alpha-trimming, from the paper's Algorithm 1
-- [x] the arms, the metrics, the paired tests
-- [x] real data with injected junk columns
-- [ ] a low-SNR scenario, which is where [SHL24] expect pruning to pay
-- [ ] reproduce one [SHL24] benchmark as a check on our transcription
+Add only when the pain is real: resumable runs, `joblib` parallelism, Parquet,
+config files, pinned versions, the leakage check (moot — alpha is chosen out of bag on the
+training split, the measure on the validation split, so there is no reuse),
+Protocol-A OOB-based measures, scenarios with correlated or interacting inputs
+(no ground truth there, so `Var(f_j(X_j))` stops being the target at all).
