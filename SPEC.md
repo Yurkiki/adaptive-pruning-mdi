@@ -212,6 +212,17 @@ Six of the 41 carry the weight:
 | **`mdi_oob` on the training rows ≡ `mdi_train`** | all of the node bookkeeping, means and routing at once. Exact, to 4e-16 |
 | `ufi_half ≈ mdi_oob` | the factor-2 error that would corrupt every bias number |
 
+## Open questions for Scornet
+
+1. **"Jeu de données de validation"** — a literal train/validation split, or
+   out-of-bag points? We implemented the split, which also removes any reuse
+   concern. OOB would be more sample-efficient.
+2. **UFI or MDI-oob?** The brief links Zhou & Hooker. We compute both; UFI is
+   currently the better performer.
+3. **Is the oracle arm in scope** — "does alpha-trimming as published help", or
+   "is there *any* pruning level that helps"? We assume both.
+4. **Classification?** All three papers cover it; this is regression-only.
+
 
 ## To do
 
