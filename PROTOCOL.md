@@ -2,10 +2,11 @@
 
 ## The problem
 
-A random forest reports how important each variable is: when a split is made on
-feature `j`, the spread of `y` inside the node drops, and MDI adds up that drop
-over every split on `j`. Read plainly, it says *how much uncertainty about y did
+A regression tree (and, averaged over its trees, a random forest) reports how
+important each variable is: when a split is made on feature `j`, the spread of
+`y` inside the node drops, and MDI adds up that drop over every split on `j`. Read plainly, it says *how much uncertainty about y did
 this variable remove*.
+
 It is wrong in two separate ways.
 
 **Bug A — deep trees invent importance.** Grow a tree until every leaf holds one
@@ -15,7 +16,7 @@ variance of `y`. But `Var(y) = signal + noise`, so the measure has just shared t
 of pure noise `y` and 5 pure-noise features — nothing related to anything — and MDI
 still hands each feature ≈0.2. For a tree grown to purity, `Σ_j MDI` equals the
 empirical `Var(y)`, which tends to `Var(m(X)) + σ²` when the right answer is
-`Var(m(X))` [S20]. In our runs `mdi_train` gave the five noise features a
+`Var(m(X))` [S20]. In our forest runs, `mdi_train` gave the five noise features a
 combined **0.37** when the truth is 0.
 
 **Bug B — grading on the questions you studied.** The tree searched every candidate
@@ -40,6 +41,26 @@ Each clause fixes one bug:
 Both fixes exist separately. **The contribution is combining them**, and *évaluer
 la pertinence* means the answer is allowed to come back negative.
 
+## Scope: single trees first, forests later
+
+The study is run on **one regression tree** first (`--kind tree`, the default),
+and only then, potentially, extended to random forests (`--kind forest`).
+
+- A single tree is where the two biases are cleanest. There is no averaging to
+  hide them, and alpha = 1 is exactly the regime [SHL24] describe as "a good
+  standalone predictor".
+- The code treats a model as a tuple of trees. A tree is a model of one tree,
+  every measure is computed per tree and then averaged, so the forest extension
+  goes through the same code with no change.
+- **A single tree has no bootstrap, so it has no OOB points.** Every pruning
+  level (`min_samples_leaf`, `ccp_alpha`, alpha) is therefore chosen by **5-fold
+  cross-validation on the training split**, the classical CART answer. The
+  validation split stays reserved for the importance measures, so no point is
+  used twice. Forests use the same CV for now; OOB tuning would be cheaper and
+  is left for when forests become the focus.
+- The CART tree considers every feature at each split (`max_features = 1.0`).
+  The forest uses a third of them.
+
 ## Why this is not obvious
 
 Scornet's Theorem 3 [S20] holds **as the depth k→∞** (and, for the empirical
@@ -55,7 +76,7 @@ We measured both halves: pruning **helped** the in-bag measure and
 **hurt** the held-out one, consistently across scenarios and sample sizes, so the
 two fixes partly worked against each other.
 
-Worse, alpha is tuned by out-of-bag **prediction** error while we care about **importance**
+Worse, alpha is tuned by cross-validated **prediction** error while we care about **importance**
 error, and nothing says the same amount of pruning is best for both. That is why
 there is an oracle arm: without it, "pruning does not help importance" and "the
 tuning picked the wrong amount" are indistinguishable.
@@ -79,9 +100,9 @@ normalised to sum to 1.
 
 `mdi_oob` [L19] — the same quantity re-evaluated off-sample:
 mean over held-out rows of `(mu_child − mu_parent) · y`, with every `mu` taken from
-the **training** (in-bag) data. [L19] define it on the forest's out-of-bag points; here it is evaluated on the
-**validation split** instead, which is the same formula on different held-out
-data rather than their estimator as published.
+the **training** (in-bag) data. [L19] define it on a forest's out-of-bag points; a
+single tree has none, so here it is evaluated on the **validation split**. It is
+Li et al.'s formula on different held-out data, not their estimator as published.
 
 `ufi_half` [ZH21] — training impurity drop **plus** the drop measured on held-out
 rows against the training means, halved (below).
@@ -89,8 +110,8 @@ rows against the training means, halved (below).
 > **UFI runs at twice the scale.** For a real split both terms converge to the same
 > true impurity drop, so `UFI → 2·I_j` on signal features while noise still cancels
 > to 0. [ZH21] only ever rank with it, so the constant never mattered to them; we
-> compare numerically against `I_j`, so **it is halved everywhere**. Measured here: raw
-> `ufi/I_j` ≈ 1.3–1.9, and `ufi_half` then tracks `mdi_oob` to within
+> compare numerically against `I_j`, so **it is halved everywhere**. Measured on
+> forests: raw `ufi/I_j` ≈ 1.3–1.9, and `ufi_half` then tracks `mdi_oob` to within
 > 2.5%.
 
 Two shared conventions: `y` is centred by the **training** mean, because the
@@ -105,14 +126,14 @@ comparing measures within an arm isolates the evaluation data and comparing arms
 within a measure isolates the pruning. `standard` is built on every point,
 because that is what practitioners actually do.
 
-| Arm | Model | Role |
+| Arm | Model (a tree by default) | Role |
 |---|---|---|
-| `standard` | grown to purity on all `n` points, `mdi_train` only | what everyone does now: the thing to beat |
+| `standard` | grown to purity, all `n` points, `mdi_train` only | what everyone does now: the thing to beat |
 | `full` | grown to purity, training split | isolates the held-out effect |
-| `global` | `min_samples_leaf` chosen out of bag | shallower but **not** adaptive |
-| `ccp` | cost-complexity `ccp_alpha` chosen out of bag | a second adaptive method |
+| `global` | `min_samples_leaf` chosen by CV | shallower but **not** adaptive |
+| `ccp` | cost-complexity `ccp_alpha` chosen by CV | a second adaptive method |
 | `alpha0` | `min_samples_leaf = 5` base, no trimming | the clean baseline for `alpha` |
-| `alpha` | alpha-trimming, alpha chosen out of bag | **the method under study** |
+| `alpha` | alpha-trimming, alpha chosen by CV | **the method under study** |
 | `oracle` | alpha chosen by importance error | simulation only; bounds what pruning could deliver |
 
 **`alpha` vs `global` is the whole project.** Is *adaptive* pruning better than
@@ -142,12 +163,12 @@ Every clause of the brief now has code behind it:
 | His words | Where |
 |---|---|
 | arbres moins profonds, de manière adaptative | `src/prune.py` — alpha-trimming, plus cost-complexity as a second adaptive method |
-| calculé sur un jeu de données de validation | `src/experiment.py` — literal train/validation split; pruning tuned out of bag |
+| calculé sur un jeu de données de validation | `src/experiment.py` — literal train/validation split; pruning tuned by CV inside the training split |
 | jeux de données simulées | `src/simulate.py` — S1, S4, with analytic `I_j` |
 | jeux de données réelles | `src/realdata.py` — diabetes, California Housing, with injected junk columns |
 | évaluer la pertinence | `src/analyse.py` — metrics, paired tests, six figures |
 
-41 tests. Model code: `src/tree.py` (tree arrays, `Model`), `src/models.py` (families, OOB tuning).
+48 tests. Model code: `src/tree.py` (tree arrays, `Model`), `src/models.py` (families, CV tuning).
 
 Remaining, in order:
 
@@ -155,7 +176,7 @@ Remaining, in order:
 |---|---|---|
 | 1 | **Validation-fraction sweep** — `--val-fraction 0.2 0.33 0.5` | at `n=250` the held-out set is 83 rows against 167 leaves in the full tree; untested |
 | 2 | **Low-SNR scenario.** [SHL24] say pruning pays off most when the signal-to-noise ratio is low, and every run so far is at SNR = 4 | the condition their method is designed for is the one we have not tried |
-| 3 | **A finer alpha grid** `{0, 0.1, ..., 3.0}` for final numbers (`ModelConfig.alpha_grid`) | runs use a 9-point grid for speed |
+| 3 | **A finer alpha grid** `{0, 0.1, ..., 3.0}` for final numbers (`ModelConfig.alpha_grid`) | runs use an 11-point grid for speed |
 | 4 | **Reproduce one [SHL24] benchmark** | independent check that our transcription of Algorithm 1 is faithful |
 
 ## What we found
@@ -224,13 +245,13 @@ uncomfortable part.
 
 ## The tests that matter
 
-Six of the 41 carry the weight:
+Six of the 48 carry the weight:
 
 | Test | Catches |
 |---|---|
 | analytic `I_j` vs Monte Carlo | wrong ground truth |
 | `Var(y) = ΣI_j + σ²` | wrong data generator |
-| OOB error equals a hand-written out-of-bag average | tuning on the wrong rows — silent and fatal |
+| CV error equals a hand-written K-fold | tuning on the wrong rows — silent and fatal |
 | full tree `Σ mdi_train = Var(y)` | wrong MDI; also confirms we reproduced Bug A |
 | **`mdi_oob` on the training rows ≡ `mdi_train`** | all of the node bookkeeping, means and routing at once. Exact, to 4e-16 |
 | `ufi_half ≈ mdi_oob` | the factor-2 error that would corrupt every bias number |
@@ -260,10 +281,13 @@ sign with `mean_diff` means the result is outlier-driven.
 3. **Is the oracle arm in scope** — "does alpha-trimming as published help", or
    "is there *any* pruning level that helps"? We assume both.
 4. **Classification?** All three papers cover it; this is regression-only.
+5. **Trees first**: is single-tree pruning tuned by 5-fold CV the right
+   reference before moving to forests?
+
 ## Deliberately left out
 
 Add only when the pain is real: resumable runs, `joblib` parallelism, Parquet,
-config files, pinned versions, the leakage check (moot — alpha is chosen out of bag on the
-training split, the measure on the validation split, so there is no reuse),
+config files, pinned versions, the leakage check (moot — alpha is chosen by CV inside
+the training split, the measure on the validation split, so there is no reuse),
 Protocol-A OOB-based measures, scenarios with correlated or interacting inputs
 (no ground truth there, so `Var(f_j(X_j))` stops being the target at all).
