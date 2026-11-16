@@ -1,10 +1,15 @@
-"""Tests for the ground truth and the importance formulas."""
+"""The tests that guard the ground truth and the importance formulas.
+
+test_training_identity is the critical one: it validates the node bookkeeping,
+the training means and the row routing in a single exact assertion.
+"""
 
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.model_selection import KFold
 from sklearn.tree import DecisionTreeRegressor
 
 import analyse
@@ -17,7 +22,7 @@ from tree import Model, TreeView, descend
 
 SCENARIO = simulate.scenario_s1()
 FEATURES = SCENARIO.n_features
-FOREST = models.ModelConfig(n_trees=25, n_jobs=1)
+TREE = models.ModelConfig()
 
 
 @pytest.fixture(scope="module")
@@ -29,8 +34,9 @@ def data() -> tuple[np.ndarray, np.ndarray]:
 def full_tree(data) -> tuple[TreeView, DecisionTreeRegressor]:
     """The same unpruned tree, as our view and as the scikit-learn object."""
     x, y = data
+    model = models.grow(x, y, TREE, 0)
     reference = DecisionTreeRegressor(max_features=1.0, random_state=0).fit(x, y)
-    return TreeView.of(reference), reference
+    return model.trees[0], reference
 
 
 # --- ground truth ----------------------------------------------------------
@@ -68,6 +74,27 @@ def test_rescaled_component_hits_target_variance() -> None:
 # --- model construction ----------------------------------------------------
 
 
+def test_default_model_is_one_cart_tree(data) -> None:
+    x, y = data
+    model = models.grow(x, y, TREE, 0)
+    assert model.n_trees == 1
+    assert TREE.features_per_split == 1.0
+
+
+def test_forest_kind_grows_many_trees(data) -> None:
+    x, y = data
+    config = models.ModelConfig(kind="forest", n_trees=7, n_jobs=1)
+    model = models.grow(x, y, config, 0)
+    assert model.n_trees == 7
+    assert config.features_per_split == pytest.approx(1.0 / 3.0)
+    assert mdi.model_mdi_train(model, FEATURES).shape == (FEATURES,)
+
+
+def test_unknown_kind_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        models.ModelConfig(kind="boosting")
+
+
 def test_treeview_predict_matches_sklearn(data, full_tree) -> None:
     x, _ = data
     view, reference = full_tree
@@ -76,14 +103,14 @@ def test_treeview_predict_matches_sklearn(data, full_tree) -> None:
 
 def test_zero_pruning_reproduces_full_tree(data) -> None:
     x, y = data
-    full = models.grow(x, y, FOREST, 0).model
-    unpruned = models.grow(x, y, FOREST, 0, ccp_alpha=0.0).model
+    full = models.grow(x, y, TREE, 0)
+    unpruned = models.grow(x, y, TREE, 0, ccp_alpha=0.0)
     assert full.mean_leaves == unpruned.mean_leaves
 
 
 def test_cost_complexity_path_is_monotone(data) -> None:
     x, y = data
-    path = models.pruning_path(models.CCP, x, y, FOREST, 0)
+    path = models.pruning_path(models.CCP, x, y, TREE, 0)
     sizes = [fit.mean_leaves for fit in path.fits]
     assert sizes == sorted(sizes, reverse=True)
     assert sizes[0] > sizes[-1]
@@ -102,19 +129,35 @@ def test_grids_must_contain_the_unpruned_case() -> None:
 # --- cross-validated tuning ------------------------------------------------
 
 
-def test_selection_takes_the_lowest_oob_error(data) -> None:
+def test_cv_error_matches_a_manual_kfold(data) -> None:
     x, y = data
-    path = models.pruning_path(models.GLOBAL, x, y, FOREST, 0)
-    chosen = models.select_by_oob(path)
-    assert chosen.oob_mse == min(fit.oob_mse for fit in path.fits)
+    expected = 0.0
+    folds = KFold(n_splits=TREE.cv_folds, shuffle=True, random_state=0)
+    for inner, held in folds.split(x):
+        fitted = DecisionTreeRegressor(max_features=1.0, random_state=0)
+        fitted.fit(x[inner], y[inner])
+        expected += float(((fitted.predict(x[held]) - y[held]) ** 2).sum())
+    errors = models.cv_errors(models.FULL, (1.0,), x, y, TREE, 0)
+    assert errors[0] == pytest.approx(expected / x.shape[0], rel=1e-12)
 
 
-def test_pruning_beats_the_full_tree_out_of_bag(data) -> None:
+def test_selection_takes_the_lowest_cv_error(data) -> None:
+    x, y = data
+    path = models.pruning_path(models.GLOBAL, x, y, TREE, 0)
+    chosen = models.select_by_cv(path)
+    assert chosen.cv_mse == min(fit.cv_mse for fit in path.fits)
+
+
+def test_pruning_beats_the_full_tree_in_cv(data) -> None:
     """A lone fully grown tree overfits; some pruning level must predict better."""
     x, y = data
-    full = models.build(models.FULL, x, y, FOREST, 0)
+    full = models.build(models.FULL, x, y, TREE, 0)
     for family in (models.GLOBAL, models.CCP, models.ALPHA):
-        assert models.build(family, x, y, FOREST, 0).oob_mse < full.oob_mse
+        assert models.build(family, x, y, TREE, 0).cv_mse < full.cv_mse
+
+
+def test_global_grid_is_capped_by_sample_size() -> None:
+    assert max(models.GLOBAL.levels(TREE, 120)) <= 12
 
 
 # --- the importance measures ----------------------------------------------
@@ -155,23 +198,25 @@ def test_training_identity(data, full_tree) -> None:
 
 def test_training_identity_holds_after_pruning(data) -> None:
     x, y = data
-    base = DecisionTreeRegressor(
-        max_features=1.0, min_samples_leaf=5, random_state=0
-    ).fit(x, y)
-    view = prune.alpha_trim(TreeView.of(base), 1.0)
+    base = models.grow(x, y, TREE, 0, min_samples_leaf=TREE.alpha_min_samples_leaf)
+    view = prune.trim(base, 1.0).trees[0]
     assert mdi.mdi_oob(view, x, y, FEATURES) == pytest.approx(
         mdi.mdi_train(view, FEATURES), abs=1e-10
     )
 
 
 def test_ufi_carries_twice_the_scale_of_mdi_oob() -> None:
-    """Raw UFI runs at 2x on signal features, so we halve it. See the spec."""
+    """Raw UFI runs at 2x on signal features, so we halve it. See PROTOCOL.
+
+    A single tree is noisier than the forest this was first measured on (2.5%
+    agreement there), hence the looser tolerance; the factor 2 is what matters.
+    """
     scenario = simulate.scenario_s1(snr=50.0)
     rng = np.random.default_rng(7)
     x, y = simulate.sample(scenario, 4000, rng)
     x_val, y_val = simulate.sample(scenario, 4000, rng)
     centre = float(y.mean())
-    model = models.grow(x, y - centre, FOREST, 0, min_samples_leaf=5).model
+    model = models.grow(x, y - centre, TREE, 0, min_samples_leaf=5)
     signal = ~scenario.is_noise
     oob = mdi.model_mdi_oob(model, x_val, y_val - centre, FEATURES)
     half = mdi.model_ufi_half(model, x_val, y_val - centre, FEATURES)
@@ -186,7 +231,7 @@ def test_out_of_sample_measures_give_noise_features_nothing() -> None:
     x, y = simulate.sample(scenario, 2000, rng)
     x_val, y_val = simulate.sample(scenario, 2000, rng)
     centre = float(y.mean())
-    model = models.grow(x, y - centre, FOREST, 0).model
+    model = models.grow(x, y - centre, TREE, 0)
     noise = scenario.is_noise
     explainable = float(scenario.true_importance.sum())
     for measure in (mdi.model_mdi_oob, mdi.model_ufi_half):
@@ -215,8 +260,8 @@ def test_off_sample_measure_is_not_shift_invariant(data, full_tree) -> None:
 
 def test_model_measure_averages_its_trees(data) -> None:
     x, y = data
-    config = models.ModelConfig(n_trees=5, n_jobs=1)
-    model = models.grow(x, y, config, 0).model
+    config = models.ModelConfig(kind="forest", n_trees=5, n_jobs=1)
+    model = models.grow(x, y, config, 0)
     per_tree = [mdi.mdi_train(t, FEATURES) for t in model.trees]
     assert mdi.model_mdi_train(model, FEATURES) == pytest.approx(
         np.mean(per_tree, axis=0), abs=1e-12
@@ -230,7 +275,7 @@ def test_model_measure_averages_its_trees(data) -> None:
 def trimmable(data) -> Model:
     """A tree grown at the node size the alpha-trimming paper assumes."""
     x, y = data
-    return models.grow(x, y, FOREST, 0, min_samples_leaf=FOREST.alpha_min_samples_leaf).model
+    return models.grow(x, y, TREE, 0, min_samples_leaf=TREE.alpha_min_samples_leaf)
 
 
 def test_alpha_zero_is_the_unpruned_tree(trimmable) -> None:
@@ -287,14 +332,14 @@ def test_pure_leaves_make_alpha_trimming_inert(data) -> None:
     test can never fire, and alpha-trimming silently does nothing.
     """
     x, y = data
-    pure = models.grow(x, y, FOREST, 0, min_samples_leaf=1).model
+    pure = models.grow(x, y, TREE, 0, min_samples_leaf=1)
     assert prune.trim(pure, 3.0).mean_leaves == pure.mean_leaves
 
 
 def test_alpha_path_covers_the_grid_from_one_fit(data) -> None:
     x, y = data
-    path = models.pruning_path(models.ALPHA, x, y, FOREST, 0)
-    assert path.levels == FOREST.alpha_grid
+    path = models.pruning_path(models.ALPHA, x, y, TREE, 0)
+    assert path.levels == TREE.alpha_grid
     assert all(fit.name == "alpha" for fit in path.fits)
 
 
@@ -346,17 +391,17 @@ def test_run_one_emits_every_arm_and_the_whole_pruning_path() -> None:
     expected = (len(split_arms) * len(mdi.MEASURES) + 1) * FEATURES
     assert len(rows) == expected
     assert {r["arm"] for r in rows} == split_arms | {"standard"}
-    assert {r["kind"] for r in rows} == {"forest"}
+    assert {r["kind"] for r in rows} == {"tree"}
     assert set(rows[0]) == set(experiment.COLUMNS)
     assert not any(np.isnan(float(r["value"])) for r in rows)
 
-    levels = len(FOREST.ccp_fractions) + len(FOREST.alpha_grid)
+    levels = len(TREE.ccp_fractions) + len(TREE.alpha_grid)
     assert len(path_rows) == levels * len(mdi.MEASURES)
     assert set(experiment.PATH_COLUMNS) == set(path_rows[0])
     assert {r["method"] for r in path_rows} == {"ccp", "alpha"}
 
 
-def test_oracle_never_loses_to_the_chosen_pruning_level() -> None:
+def test_oracle_never_loses_to_the_cv_pruning_level() -> None:
     """The oracle picks on importance error, so by construction it cannot be worse."""
     rows, _ = experiment.run_one(SCENARIO, 200, 0, SMALL_RUN)
     frame = pd.DataFrame(rows)
@@ -380,6 +425,15 @@ def test_standard_arm_uses_every_point() -> None:
     split = frame[frame["arm"] == "full"]["mean_leaves"].iloc[0]
     assert standard > split
     assert set(frame[frame["arm"] == "standard"]["measure"]) == {"mdi_train"}
+
+
+def test_forest_kind_runs_end_to_end() -> None:
+    config = experiment.RunConfig(
+        n_reps=1, n_test=200,
+        model=models.ModelConfig(kind="forest", n_trees=5, n_jobs=1, cv_folds=2),
+    )
+    rows, _ = experiment.run_one(SCENARIO, 120, 0, config)
+    assert {r["kind"] for r in rows} == {"forest"}
 
 
 def test_runs_are_reproducible() -> None:

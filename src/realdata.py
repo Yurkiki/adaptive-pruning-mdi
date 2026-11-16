@@ -31,7 +31,7 @@ BoolArray = npt.NDArray[np.bool_]
 
 COLUMNS = (
     "dataset", "kind", "rep", "arm", "measure", "feature", "name", "value",
-    "is_injected", "oob_mse", "test_mse", "selected_param", "mean_leaves",
+    "is_injected", "cv_mse", "test_mse", "selected_param", "mean_leaves",
 )
 
 
@@ -109,8 +109,8 @@ def run_one(
         "full": models.build(models.FULL, x_train, y_train, config, rep),
         "global": models.build(models.GLOBAL, x_train, y_train, config, rep),
         "ccp": models.build(models.CCP, x_train, y_train, config, rep),
-        "alpha0": models.Fitted("alpha0", alpha.fits[0].model, 0.0, alpha.fits[0].oob_mse),
-        "alpha": models.select_by_oob(alpha),
+        "alpha0": models.Fitted("alpha0", alpha.fits[0].model, 0.0, alpha.fits[0].cv_mse),
+        "alpha": models.select_by_cv(alpha),
     }
     rows: list[dict[str, object]] = []
     for name, fit in fits.items():
@@ -120,12 +120,12 @@ def run_one(
             for j in range(n_features):
                 rows.append(
                     {
-                        "dataset": dataset, "kind": "forest", "rep": rep,
+                        "dataset": dataset, "kind": config.kind, "rep": rep,
                         "arm": name,
                         "measure": measure, "feature": j, "name": names[j],
                         "value": float(estimate[j]),
                         "is_injected": bool(injected[j]),
-                        "oob_mse": fit.oob_mse, "test_mse": test_mse,
+                        "cv_mse": fit.cv_mse, "test_mse": test_mse,
                         "selected_param": fit.selected_param,
                         "mean_leaves": fit.mean_leaves,
                     }
@@ -187,11 +187,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--datasets", nargs="+", default=list(DATASETS))
     parser.add_argument("--reps", type=int, default=10)
-    parser.add_argument("--trees", type=int, default=300)
+    parser.add_argument("--kind", default="tree", choices=models.KINDS)
+    parser.add_argument("--trees", type=int, default=300, help="forest only")
     parser.add_argument("--out", type=Path, default=Path("results/real.csv"))
     args = parser.parse_args()
 
-    config = models.ModelConfig(n_trees=args.trees)
+    config = models.ModelConfig(kind=args.kind, n_trees=args.trees)
     rows: list[dict[str, object]] = []
     for dataset in args.datasets:
         for rep in range(args.reps):

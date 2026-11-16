@@ -180,7 +180,7 @@ HEADLINE: tuple[Comparison, ...] = (
     (("full", "mdi_oob"), ("full", "mdi_train"), "held out alone  [MDI-oob]"),
     (("full", "ufi_half"), ("full", "mdi_oob"), "UFI vs MDI-oob, same model"),
     (("alpha", "ufi_half"), ("standard", "mdi_train"), "new method vs standard practice"),
-    (("oracle", "ufi_half"), ("alpha", "ufi_half"), "oracle vs the chosen alpha"),
+    (("oracle", "ufi_half"), ("alpha", "ufi_half"), "oracle vs CV alpha"),
 )
 
 
@@ -409,7 +409,7 @@ def plots(frame: pd.DataFrame, path_frame: pd.DataFrame | None, out_dir: Path) -
                             markeredgecolor=SURFACE, markeredgewidth=1.2, zorder=3)
                 picked = (
                     block[block["measure"] == MEASURE_ORDER[0]]
-                    .loc[lambda d: d.groupby("rep")["oob_mse"].idxmin()]["level"]
+                    .loc[lambda d: d.groupby("rep")["cv_mse"].idxmin()]["level"]
                 )
                 chosen = float(np.median([position[v] for v in picked]))
                 ax.axvline(chosen, color=ACCENT, linewidth=1.6, zorder=2)

@@ -5,6 +5,9 @@ path.csv     one row per (n, rep, level, measure) -- importance error against th
              amount of pruning, which is what shows whether CV picks a useful
              pruning level at all
 
+The model is a single regression tree by default (`--kind tree`); `--kind forest`
+runs the identical protocol on random forests.
+
 Every split-sample arm is built on the same training split, so comparing
 measures within an arm isolates the evaluation data and comparing arms within a
 measure isolates the pruning. The standard arm is built on every point instead,
@@ -34,13 +37,13 @@ FloatArray = npt.NDArray[np.float64]
 
 COLUMNS = (
     "scenario", "kind", "n", "rep", "arm", "measure", "feature", "value",
-    "true_importance", "is_noise", "sigma_sq", "oob_mse", "test_mse",
+    "true_importance", "is_noise", "sigma_sq", "cv_mse", "test_mse",
     "selected_param", "mean_leaves", "mean_depth",
 )
 
 PATH_COLUMNS = (
     "scenario", "kind", "n", "rep", "method", "level", "measure",
-    "importance_error", "oob_mse", "test_mse", "mean_leaves",
+    "importance_error", "cv_mse", "test_mse", "mean_leaves",
 )
 
 ORACLE_MEASURE = "ufi_half"
@@ -107,9 +110,9 @@ def run_one(
     fits = {
         "full": models.build(models.FULL, x_train, y_train, setup, rep),
         "global": models.build(models.GLOBAL, x_train, y_train, setup, rep),
-        "ccp": models.select_by_oob(ccp),
+        "ccp": models.select_by_cv(ccp),
         "alpha0": replace(alpha.fits[0], name="alpha0"),
-        "alpha": models.select_by_oob(alpha),
+        "alpha": models.select_by_cv(alpha),
         "oracle": select_oracle(alpha, x_val, y_val, truth),
     }
     overall = float(y.mean())
@@ -117,7 +120,7 @@ def run_one(
 
     rows: list[dict[str, object]] = []
     shared = {
-        "scenario": scenario.name, "kind": "forest", "n": n, "rep": rep,
+        "scenario": scenario.name, "kind": setup.kind, "n": n, "rep": rep,
         "sigma_sq": sigma_sq,
     }
 
@@ -133,7 +136,7 @@ def run_one(
                         "value": float(estimate[j]),
                         "true_importance": float(truth[j]),
                         "is_noise": bool(scenario.is_noise[j]),
-                        "oob_mse": fit.oob_mse, "test_mse": test_mse,
+                        "cv_mse": fit.cv_mse, "test_mse": test_mse,
                         "selected_param": fit.selected_param,
                         "mean_leaves": fit.mean_leaves,
                         "mean_depth": fit.mean_depth,
@@ -161,11 +164,11 @@ def run_one(
             for measure, estimate in values.items():
                 path_rows.append(
                     {
-                        "scenario": scenario.name, "kind": "forest", "n": n,
+                        "scenario": scenario.name, "kind": setup.kind, "n": n,
                         "rep": rep, "method": method, "level": fit.selected_param,
                         "measure": measure,
                         "importance_error": importance_error(estimate, truth),
-                        "oob_mse": fit.oob_mse, "test_mse": test_mse,
+                        "cv_mse": fit.cv_mse, "test_mse": test_mse,
                         "mean_leaves": fit.mean_leaves,
                     }
                 )
@@ -184,7 +187,7 @@ def run(config: RunConfig, out: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
             rows.extend(new_rows)
             path_rows.extend(new_path)
         print(
-            f"  {config.scenario} n={n:<5d} {config.n_reps} reps "
+            f"  {config.scenario} [{config.model.kind}] n={n:<5d} {config.n_reps} reps "
             f"in {time.perf_counter() - start:6.1f}s"
         )
 
@@ -201,10 +204,12 @@ def run(config: RunConfig, out: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scenario", default="S1", choices=sorted(simulate.SCENARIOS))
+    parser.add_argument("--kind", default="tree", choices=models.KINDS)
     parser.add_argument("--snr", type=float, default=4.0)
     parser.add_argument("--sizes", type=int, nargs="+", default=[250, 1000])
     parser.add_argument("--reps", type=int, default=20)
-    parser.add_argument("--trees", type=int, default=500)
+    parser.add_argument("--trees", type=int, default=500, help="forest only")
+    parser.add_argument("--folds", type=int, default=5)
     parser.add_argument("--val-fraction", type=float, default=1.0 / 3.0)
     parser.add_argument("--out", type=Path, default=Path("results/results.csv"))
     args = parser.parse_args()
@@ -216,7 +221,9 @@ def main() -> None:
             sizes=tuple(args.sizes),
             n_reps=args.reps,
             val_fraction=args.val_fraction,
-            model=models.ModelConfig(n_trees=args.trees),
+            model=models.ModelConfig(
+                kind=args.kind, n_trees=args.trees, cv_folds=args.folds
+            ),
         ),
         args.out,
     )

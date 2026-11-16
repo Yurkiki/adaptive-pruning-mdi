@@ -5,7 +5,7 @@ mdi_oob      the same quantity re-evaluated off-sample          [Li et al. 2019]
 ufi          in-bag impurity drop plus the off-sample drop      [Zhou & Hooker 2021]
 
 Each is defined on one tree; `model_*` averages over the trees of a model, so a
-forest and a lone tree go through the same code.
+single tree and a forest go through the same code.
 
 ufi carries twice the scale of the other two on signal features, so callers
 compare `ufi_half` against the truth. See PROTOCOL, "The measures".

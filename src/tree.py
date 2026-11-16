@@ -1,7 +1,8 @@
 """Tree arrays detached from scikit-learn, and a model as a tuple of them.
 
-Every measure is defined per tree and averaged over the model, so a forest and a
-lone tree go through the same code.
+A single tree is a model of one tree; a forest is a model of many. Every measure
+is defined per tree and averaged over the model, so nothing downstream needs to
+know which of the two it holds.
 """
 
 from __future__ import annotations

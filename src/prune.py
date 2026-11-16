@@ -14,9 +14,10 @@ upward as I_N <- I_NL + I_NR + alpha * (P_1 - P_0), which is what makes the rule
 *accumulated*: a split kept here can still be dissolved higher up along with its
 whole branch.
 
-alpha = 0 performs no pruning and returns the tree unchanged, which applied to
-every tree of a forest is the standard random forest; alpha = 1 prunes each tree
-to be a good standalone predictor. Pruning is post hoc, so the whole alpha grid
+alpha = 0 performs no pruning and returns the tree unchanged (applied to every
+tree of a forest, the standard random forest); alpha = 1 prunes each tree to be
+a good standalone predictor -- the regime that matters when the model is a
+single tree. Pruning is post hoc, so the whole alpha grid
 costs one fit.
 """
 
