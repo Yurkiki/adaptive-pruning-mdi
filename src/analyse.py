@@ -253,6 +253,8 @@ def plots(frame: pd.DataFrame, path_frame: pd.DataFrame | None, out_dir: Path) -
     features = per_feature(frame)
     reps = per_rep(frame)
     scenario = str(frame["scenario"].iloc[0])
+    if "kind" in frame:
+        scenario = f"{scenario}_{frame['kind'].iloc[0]}"
     sizes = sorted(frame["n"].unique())
     n_noise = int(frame.loc[frame["is_noise"].astype(bool), "feature"].nunique())
     written: list[Path] = []
@@ -260,6 +262,9 @@ def plots(frame: pd.DataFrame, path_frame: pd.DataFrame | None, out_dir: Path) -
     def finish(fig: object, name: str) -> None:
         assert isinstance(fig, matplotlib.figure.Figure)
         fig.patch.set_facecolor(SURFACE)
+        if fig._suptitle is not None:
+            # a single panel is too narrow for the longer titles
+            fig._suptitle.set_wrap(True)
         fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.94))
         target = out_dir / f"{scenario}_{name}.png"
         fig.savefig(target, dpi=150, facecolor=SURFACE)
