@@ -17,7 +17,7 @@ of pure noise `y` and 5 pure-noise features — nothing related to anything — 
 still hands each feature ≈0.2. For a tree grown to purity, `Σ_j MDI` equals the
 empirical `Var(y)`, which tends to `Var(m(X)) + σ²` when the right answer is
 `Var(m(X))` [S20]. In our forest runs, `mdi_train` gave the five noise features a
-combined **0.37** when the truth is 0.
+combined **0.37** when the truth is 0; a first single-tree run (`n = 1000`) gives 0.18.
 
 **Bug B — grading on the questions you studied.** The tree searched every candidate
 split and kept the one that looked best *on the training data*. MDI then measures
@@ -72,9 +72,10 @@ So pruning cuts both ways:
 - it moves you to a shallower tree that has not resolved the signal yet, so the
   measure **undershoots** (bad).
 
-We measured both halves: pruning **helped** the in-bag measure and
+On forests we measured both halves: pruning **helped** the in-bag measure and
 **hurt** the held-out one, consistently across scenarios and sample sizes, so the
-two fixes partly worked against each other.
+two fixes partly worked against each other. Whether this holds for single trees is
+the first thing to establish (Status, item 0).
 
 Worse, alpha is tuned by cross-validated **prediction** error while we care about **importance**
 error, and nothing says the same amount of pruning is best for both. That is why
@@ -112,7 +113,7 @@ rows against the training means, halved (below).
 > to 0. [ZH21] only ever rank with it, so the constant never mattered to them; we
 > compare numerically against `I_j`, so **it is halved everywhere**. Measured on
 > forests: raw `ufi/I_j` ≈ 1.3–1.9, and `ufi_half` then tracks `mdi_oob` to within
-> 2.5%.
+> 2.5%. A single tree is noisier: within about 11%.
 
 Two shared conventions: `y` is centred by the **training** mean, because the
 held-out measures are not shift-invariant (in-bag `Σ f_T,k = 0`, off-sample it is
@@ -151,10 +152,11 @@ merely *shallower* trees? `alpha` vs `alpha0` isolates the pruning alone.
 > same object as our `full` arm; hence `alpha0`. A test pins this down:
 > `test_pure_leaves_make_alpha_trimming_inert`.
 
-This mattered: cost-complexity tuned by OOB only ever shrank
+This mattered for forests: there, cost-complexity tuned by OOB only ever shrank
 trees to 76-82% of full, so `ccp` and `global` were near-copies of `full`, while
 alpha-trimming spanned the real range (41 leaves at `alpha = 0`, 20 at `alpha = 1`,
-6 at `alpha = 2`).
+6 at `alpha = 2`). A single tree is pruned much harder by CV: in a first run at
+`n = 1000`, from 667 leaves (`full`) to about 30 (`global`, `alpha`) and 12 (`ccp`).
 
 ## Status
 
@@ -174,12 +176,17 @@ Remaining, in order:
 
 | # | Do | Why |
 |---|---|---|
+| 0 | **Re-run every finding below on single trees** (S1, S4, several `n` and SNR) | the numbers below were measured on forests |
 | 1 | **Validation-fraction sweep** — `--val-fraction 0.2 0.33 0.5` | at `n=250` the held-out set is 83 rows against 167 leaves in the full tree; untested |
 | 2 | **Low-SNR scenario.** [SHL24] say pruning pays off most when the signal-to-noise ratio is low, and every run so far is at SNR = 4 | the condition their method is designed for is the one we have not tried |
 | 3 | **A finer alpha grid** `{0, 0.1, ..., 3.0}` for final numbers (`ModelConfig.alpha_grid`) | runs use an 11-point grid for speed |
 | 4 | **Reproduce one [SHL24] benchmark** | independent check that our transcription of Algorithm 1 is faithful |
 
-## What we found
+## What we found: forests, earlier code
+
+> These results were measured on **random forests tuned by OOB**, before the
+> switch to single trees. They are kept as the reference for the forest
+> extension; none of them has been re-measured on trees yet (Status, item 0).
 
 Ordered by how much I would stake on it.
 
