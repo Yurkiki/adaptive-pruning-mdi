@@ -137,8 +137,30 @@ def test_cv_error_matches_a_manual_kfold(data) -> None:
         fitted = DecisionTreeRegressor(max_features=1.0, random_state=0)
         fitted.fit(x[inner], y[inner])
         expected += float(((fitted.predict(x[held]) - y[held]) ** 2).sum())
-    errors = models.cv_errors(models.FULL, (1.0,), x, y, TREE, 0)
+    errors = models.cv_errors(models.FULL, (1.0,), x, y, TREE, 0, float(np.var(y)))
     assert errors[0] == pytest.approx(expected / x.shape[0], rel=1e-12)
+
+
+def test_ccp_level_means_the_same_alpha_in_cv_and_in_the_fit(data) -> None:
+    """The ccp grid is a fraction of Var(y), which differs fold to fold.
+
+    Taking the scale from the whole training split keeps a level pinned to one
+    absolute alpha; taking it per fold would cross-validate models other than the
+    ones actually fitted.
+    """
+    x, y = data
+    levels = (0.0, 1e-3, 1e-2)
+    scale = float(np.var(y))
+    folds = KFold(n_splits=TREE.cv_folds, shuffle=True, random_state=0)
+    fold_scales = [float(np.var(y[inner])) for inner, _ in folds.split(x)]
+    assert max(fold_scales) - min(fold_scales) > 1e-6 * scale  # the folds do differ
+
+    grown = models._ccp_grow(x, y, TREE, 0, levels, scale)
+    direct = tuple(
+        models.grow(x, y, TREE, 0, ccp_alpha=level * scale) for level in levels
+    )
+    for a, b in zip(grown, direct, strict=True):
+        assert a.mean_leaves == b.mean_leaves
 
 
 def test_selection_takes_the_lowest_cv_error(data) -> None:
@@ -362,6 +384,31 @@ def test_mse_decomposes_into_bias_squared_plus_variance() -> None:
     assert table["mse"].to_numpy() == pytest.approx(
         (table["bias"] ** 2 + table["variance"]).to_numpy(), abs=1e-12
     )
+
+
+def test_scored_flags_a_model_too_small_to_rank() -> None:
+    """A heavily pruned tree leaves most features at exactly zero.
+
+    Noise mass then reads as a flawless 0 and AUC is carried by ties, so the
+    summary has to say how many features the model actually scored.
+    """
+    rows = []
+    for rep in range(3):
+        for feature in range(10):
+            # only the first two features are ever split on
+            value = 0.4 if feature < 2 else 0.0
+            rows.append(
+                {
+                    "scenario": "S1", "n": 100, "arm": "tiny", "measure": "mdi_train",
+                    "rep": rep, "feature": feature, "value": value,
+                    "true_importance": 0.5 if feature < 5 else 0.0,
+                    "is_noise": feature >= 5, "sigma_sq": 0.25,
+                    "test_mse": 1.0, "mean_leaves": 3.0,
+                }
+            )
+    table = analyse.summary(pd.DataFrame(rows))
+    assert float(table["noise_mass"].iloc[0]) == 0.0  # looks perfect
+    assert float(table["scored"].iloc[0]) == pytest.approx(0.2)  # but is not
 
 
 def test_auc_endpoints() -> None:

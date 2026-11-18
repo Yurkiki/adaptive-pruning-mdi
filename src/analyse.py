@@ -80,6 +80,7 @@ def per_rep(frame: pd.DataFrame) -> pd.DataFrame:
                 "signal_mass": float(values[~noise].sum()),
                 "explainable": explainable,
                 "auc": auc_signal_vs_noise(values, noise),
+                "scored": float((np.abs(values) > 0.0).sum()) / values.size,
                 "tau": tau,
                 "excess_risk": float(
                     group["test_mse"].iloc[0] - group["sigma_sq"].iloc[0]
@@ -103,7 +104,7 @@ def summary(frame: pd.DataFrame) -> pd.DataFrame:
     """One row per arm, with Monte Carlo standard errors on every mean."""
     columns = [
         "loss", "relative_loss", "noise_mass", "noise_mass_abs", "signal_mass",
-        "auc", "tau", "excess_risk", "mean_leaves",
+        "auc", "scored", "tau", "excess_risk", "mean_leaves",
     ]
     table = _mean_and_se(per_rep(frame), columns)
     table = table.rename(columns={"loss": "total_mse", "loss_se": "total_mse_se"})
@@ -176,10 +177,13 @@ HEADLINE: tuple[Comparison, ...] = (
     (("alpha", "mdi_train"), ("alpha0", "mdi_train"), "pruning alone, in sample  [same base]"),
     (("alpha", "ufi_half"), ("global", "ufi_half"), "alpha-trimming vs global depth control"),
     (("alpha", "ufi_half"), ("ccp", "ufi_half"), "alpha-trimming vs cost-complexity"),
-    (("full", "ufi_half"), ("full", "mdi_train"), "held out alone  [UFI]"),
-    (("full", "mdi_oob"), ("full", "mdi_train"), "held out alone  [MDI-oob]"),
+    (("full", "ufi_half"), ("full", "mdi_train"), "UFI vs classic MDI, same model"),
+    (("full", "mdi_oob"), ("full", "mdi_train"), "held-out data alone  [same formula]"),
     (("full", "ufi_half"), ("full", "mdi_oob"), "UFI vs MDI-oob, same model"),
-    (("alpha", "ufi_half"), ("standard", "mdi_train"), "new method vs standard practice"),
+    # standard trains on every point, so that row also carries a third more data;
+    # the row above it is the same question at an equal sample budget
+    (("alpha", "ufi_half"), ("full", "mdi_train"), "combined, at equal sample budget"),
+    (("alpha", "ufi_half"), ("standard", "mdi_train"), "combined vs standard practice"),
     (("oracle", "ufi_half"), ("alpha", "ufi_half"), "oracle vs CV alpha"),
 )
 
@@ -201,7 +205,7 @@ def report(frame: pd.DataFrame) -> None:
     show = [
         "arm", "measure", "total_mse", "total_mse_se", "relative_loss",
         "noise_mass", "noise_mass_se", "signal_mass", "explainable",
-        "auc", "tau", "excess_risk", "mean_leaves",
+        "auc", "scored", "tau", "excess_risk", "mean_leaves",
     ]
     for (scenario, n), block in table.groupby(["scenario", "n"], observed=True):
         print(f"\n=== {scenario}  n = {n} " + "=" * 60)
@@ -216,11 +220,22 @@ def report(frame: pd.DataFrame) -> None:
                  "left_wins", "p_holm"]]
             .to_string(index=False, float_format=lambda v: f"{v:8.4f}")
         )
+    print("\n  scored: fraction of features the model gave any importance at all.")
+    print("  Well below 1 means the tree is too small to rank them: noise mass and")
+    print("  AUC are then flattered by ties at exactly zero, not by a better measure.")
     print("\n  mean_diff < 0 means the left arm has the lower loss (is better)")
     print("  median_diff disagreeing in sign with mean_diff means outlier-driven")
 
 
 # --- figures ---------------------------------------------------------------
+
+
+def suptitle(fig: object, text: str) -> None:
+    """A single panel is too narrow for the longer titles, so let them wrap."""
+    import matplotlib.figure
+
+    assert isinstance(fig, matplotlib.figure.Figure)
+    fig.suptitle(text, fontsize=11, color=INK).set_wrap(True)
 
 
 def _style(ax: object) -> None:
@@ -262,9 +277,6 @@ def plots(frame: pd.DataFrame, path_frame: pd.DataFrame | None, out_dir: Path) -
     def finish(fig: object, name: str) -> None:
         assert isinstance(fig, matplotlib.figure.Figure)
         fig.patch.set_facecolor(SURFACE)
-        if fig._suptitle is not None:
-            # a single panel is too narrow for the longer titles
-            fig._suptitle.set_wrap(True)
         fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.94))
         target = out_dir / f"{scenario}_{name}.png"
         fig.savefig(target, dpi=150, facecolor=SURFACE)
@@ -291,10 +303,7 @@ def plots(frame: pd.DataFrame, path_frame: pd.DataFrame | None, out_dir: Path) -
         _style(ax)
         ax.set_title(f"n = {n}", fontsize=10)
         ax.set_ylabel(f"summed importance of the {n_noise} noise features")
-    fig.suptitle(
-        f"{scenario}: importance handed to features that have none (truth = 0)",
-        fontsize=11, color=INK,
-    )
+    suptitle(fig, f"{scenario}: importance handed to features that have none (truth = 0)")
     finish(fig, "1_noise_mass")
 
     # 2. recovery of the true importance, per feature
@@ -315,8 +324,7 @@ def plots(frame: pd.DataFrame, path_frame: pd.DataFrame | None, out_dir: Path) -
         ax.set_xlabel("true importance  $I_j$")
         ax.set_ylabel("estimated importance")
         ax.legend(frameon=False, fontsize=8, labelcolor=INK_SOFT)
-    fig.suptitle(f"{scenario}: recovery of the true importance", fontsize=11,
-                 color=INK)
+    suptitle(fig, f"{scenario}: recovery of the true importance")
     finish(fig, "2_recovery")
 
     # 3. is the error bias or variance?
@@ -338,8 +346,7 @@ def plots(frame: pd.DataFrame, path_frame: pd.DataFrame | None, out_dir: Path) -
         ax.set_title(f"n = {n}", fontsize=10)
         ax.set_ylabel("total MSE against $I_j$")
         ax.legend(frameon=False, fontsize=8, labelcolor=INK_SOFT)
-    fig.suptitle(f"{scenario}: how the error splits into bias and variance",
-                 fontsize=11, color=INK)
+    suptitle(fig, f"{scenario}: how the error splits into bias and variance")
     finish(fig, "3_bias_vs_variance")
 
     # 4. paired comparisons
@@ -360,8 +367,7 @@ def plots(frame: pd.DataFrame, path_frame: pd.DataFrame | None, out_dir: Path) -
         _style(ax)
         ax.set_title(f"n = {n}   (filled = significant after Holm)", fontsize=10)
         ax.set_xlabel("mean paired difference in loss   (negative = left arm better)")
-    fig.suptitle(f"{scenario}: paired comparisons with 95% bootstrap intervals",
-                 fontsize=11, color=INK)
+    suptitle(fig, f"{scenario}: paired comparisons with 95% bootstrap intervals")
     finish(fig, "4_comparisons")
 
     # 5. per-feature bias
@@ -384,7 +390,7 @@ def plots(frame: pd.DataFrame, path_frame: pd.DataFrame | None, out_dir: Path) -
         ax.set_xlabel("feature")
         ax.set_ylabel("bias")
         ax.legend(frameon=False, fontsize=8, labelcolor=INK_SOFT)
-    fig.suptitle(f"{scenario}: where each measure goes wrong", fontsize=11, color=INK)
+    suptitle(fig, f"{scenario}: where each measure goes wrong")
     finish(fig, "5_bias_by_feature")
 
     # 6. does any pruning level help? the whole path, not just the chosen point
@@ -437,8 +443,7 @@ def plots(frame: pd.DataFrame, path_frame: pd.DataFrame | None, out_dir: Path) -
                 ax.set_ylabel("importance error  $\\sum_j (\\hat{M}_j - I_j)^2$")
                 if row == 0 and column == 0:
                     ax.legend(frameon=False, fontsize=8, labelcolor=INK_SOFT)
-        fig.suptitle(f"{scenario}: importance error against how hard we prune",
-                     fontsize=11, color=INK)
+        suptitle(fig, f"{scenario}: importance error against how hard we prune")
         finish(fig, "6_pruning_path")
 
     for target in written:

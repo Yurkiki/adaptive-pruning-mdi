@@ -110,7 +110,9 @@ def grow(
 
 
 Levels = Callable[[ModelConfig, int], tuple[float, ...]]
-Grower = Callable[[FloatArray, FloatArray, ModelConfig, int, tuple[float, ...]], tuple[Model, ...]]
+Grower = Callable[
+    [FloatArray, FloatArray, ModelConfig, int, tuple[float, ...], float], tuple[Model, ...]
+]
 
 
 @dataclass(frozen=True)
@@ -127,7 +129,8 @@ def _full_levels(config: ModelConfig, n: int) -> tuple[float, ...]:
 
 
 def _full_grow(
-    x: FloatArray, y: FloatArray, config: ModelConfig, seed: int, levels: tuple[float, ...]
+    x: FloatArray, y: FloatArray, config: ModelConfig, seed: int,
+    levels: tuple[float, ...], scale: float
 ) -> tuple[Model, ...]:
     return (grow(x, y, config, seed),)
 
@@ -138,7 +141,8 @@ def _global_levels(config: ModelConfig, n: int) -> tuple[float, ...]:
 
 
 def _global_grow(
-    x: FloatArray, y: FloatArray, config: ModelConfig, seed: int, levels: tuple[float, ...]
+    x: FloatArray, y: FloatArray, config: ModelConfig, seed: int,
+    levels: tuple[float, ...], scale: float
 ) -> tuple[Model, ...]:
     return tuple(grow(x, y, config, seed, min_samples_leaf=int(v)) for v in levels)
 
@@ -148,10 +152,12 @@ def _ccp_levels(config: ModelConfig, n: int) -> tuple[float, ...]:
 
 
 def _ccp_grow(
-    x: FloatArray, y: FloatArray, config: ModelConfig, seed: int, levels: tuple[float, ...]
+    x: FloatArray, y: FloatArray, config: ModelConfig, seed: int,
+    levels: tuple[float, ...], scale: float
 ) -> tuple[Model, ...]:
-    # ccp_alpha is in impurity units, so the grid is a fraction of Var(y)
-    scale = float(np.var(y))
+    # ccp_alpha is in impurity units, so the grid is a fraction of Var(y). The
+    # scale comes from the whole training split, so a level means the same absolute
+    # alpha inside cross-validation as in the model finally fitted.
     return tuple(grow(x, y, config, seed, ccp_alpha=f * scale) for f in levels)
 
 
@@ -160,7 +166,8 @@ def _alpha_levels(config: ModelConfig, n: int) -> tuple[float, ...]:
 
 
 def _alpha_grow(
-    x: FloatArray, y: FloatArray, config: ModelConfig, seed: int, levels: tuple[float, ...]
+    x: FloatArray, y: FloatArray, config: ModelConfig, seed: int,
+    levels: tuple[float, ...], scale: float
 ) -> tuple[Model, ...]:
     """Alpha-trimming across the grid, from a single fit.
 
@@ -202,12 +209,13 @@ def cv_errors(
     y: FloatArray,
     config: ModelConfig,
     seed: int,
+    scale: float,
 ) -> FloatArray:
     """K-fold cross-validated MSE of every level, on the training split only."""
     folds = KFold(n_splits=config.cv_folds, shuffle=True, random_state=seed)
     squared = np.zeros(len(levels), dtype=np.float64)
     for inner, held in folds.split(x):
-        models = family.grow(x[inner], y[inner], config, seed, levels)
+        models = family.grow(x[inner], y[inner], config, seed, levels, scale)
         for k, model in enumerate(models):
             squared[k] += float(((model.predict(x[held]) - y[held]) ** 2).sum())
     return squared / x.shape[0]
@@ -217,8 +225,9 @@ def pruning_path(
     family: Family, x: FloatArray, y: FloatArray, config: ModelConfig, seed: int
 ) -> PruningPath:
     levels = family.levels(config, x.shape[0])
-    models = family.grow(x, y, config, seed, levels)
-    errors = cv_errors(family, levels, x, y, config, seed)
+    scale = float(np.var(y))
+    models = family.grow(x, y, config, seed, levels, scale)
+    errors = cv_errors(family, levels, x, y, config, seed, scale)
     return PruningPath(
         tuple(
             Fitted(family.name, model, level, float(error))

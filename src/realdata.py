@@ -148,13 +148,16 @@ def summarise(frame: pd.DataFrame) -> pd.DataFrame:
                 "injected_share": float(np.abs(values[injected]).sum() / total)
                 if total > 0 else float("nan"),
                 "auc": analyse.auc_signal_vs_noise(values, injected),
+                "scored": float((np.abs(values) > 0.0).sum()) / values.size,
                 "test_mse": float(group["test_mse"].iloc[0]),
                 "mean_leaves": float(group["mean_leaves"].iloc[0]),
             }
         )
     per_rep = pd.DataFrame(records)
     keys = ["dataset", "arm", "measure"]
-    columns = ["injected_mass", "injected_share", "auc", "test_mse", "mean_leaves"]
+    columns = [
+        "injected_mass", "injected_share", "auc", "scored", "test_mse", "mean_leaves",
+    ]
     grouped = per_rep.groupby(keys, as_index=False)
     out = grouped.agg(**{c: (c, "mean") for c in columns})
     errors = grouped.agg(
@@ -215,6 +218,9 @@ def main() -> None:
         )
     print("\n  injected_share: fraction of total importance given to known-junk columns")
     print("  auc: separation of real features from injected ones (1.0 is perfect)")
+    print("  scored: fraction of features given any importance at all. Well below 1")
+    print("  means the model is too small to rank them, so injected_share and auc")
+    print("  are flattered by ties at exactly zero rather than by a better measure.")
 
 
 if __name__ == "__main__":
