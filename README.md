@@ -1,10 +1,13 @@
 # Adaptive Pruning and Out-of-Sample MDI
 
-Does a variable importance measured on **adaptively pruned** forests and
+Does a variable importance measured on **adaptively pruned** trees and
 evaluated on **held-out data** beat the standard MDI?
 
-**Start with [PROTOCOL.md](PROTOCOL.md)** — the problem, the aim, the measures and what is
-left to run.
+The study runs on **single regression trees** first; random forests are a
+switch away (`--kind forest`) for the later extension.
+
+**Start with [PROTOCOL.md](PROTOCOL.md)** — the problem, the aim, the measures and
+what is left to run.
 
 ## Setup
 
@@ -21,6 +24,9 @@ python -m pytest tests/ -q
 python src/experiment.py --scenario S1 --sizes 250 1000 --reps 20 --out results/s1.csv
 python src/analyse.py --results results/s1.csv
 python src/realdata.py --reps 10
+
+# the same protocol on forests, later
+python src/experiment.py --kind forest --trees 300 --out results/s1_forest.csv
 ```
 
 Figures land in `results/figures/`; `results/s1_path.csv` holds the importance
@@ -31,8 +37,8 @@ error at every pruning level.
 | File | Contents |
 |---|---|
 | `src/simulate.py` | additive data generator; true importance `I_j = Var(f_j(X_j))` known analytically |
-| `src/tree.py` | tree arrays detached from scikit-learn; `Model` = a forest of them |
-| `src/models.py` | the pruning families (full, global depth control, cost-complexity, alpha-trimming), tuned out of bag |
+| `src/tree.py` | tree arrays detached from scikit-learn; `Model` = one tree or a forest |
+| `src/models.py` | the pruning families (full, global depth control, cost-complexity, alpha-trimming), tuned by K-fold CV |
 | `src/mdi.py` | the three measures: `mdi_train`, `mdi_oob`, `ufi_half` |
 | `src/prune.py` | alpha-trimming (Algorithm 1 of Surjanovic, Henrey & Loughin 2024) |
 | `src/realdata.py` | real datasets with injected known-junk columns |
@@ -40,9 +46,10 @@ error at every pruning level.
 | `src/analyse.py` | bias/variance/MSE, noise mass, AUC, Kendall tau, paired Wilcoxon |
 | `tests/test_all.py` | the tests, including the exact training-data identity |
 
-All arms except `standard` are built on the same training split, so comparing
-measures within an arm isolates the evaluation data, and comparing arms within a
-measure isolates the pruning.
+All split-sample arms are built on the same training split, so comparing measures
+within an arm isolates the evaluation data, and comparing arms within a
+measure isolates the pruning. Pruning levels are chosen by 5-fold CV inside the
+training split; the validation split is used only for the importance measures.
 
 ## Two things to know before reading results
 
