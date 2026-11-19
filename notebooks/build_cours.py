@@ -509,111 +509,49 @@ for nom in ("mdi_train", "mdi_oob", "ufi_half"):
 md(r"""
 ### Les trois formules
 
-Notons $N$ un nœud interne, $N_L$ et $N_R$ ses deux enfants, $v(N)$ la variable sur laquelle $N$
-coupe, $\mathcal{T}$ les lignes d'entraînement et $\mathcal{V}$ celles de validation. Deux
-quantités, à ne pas confondre :
+$N$ un nœud interne, $N_L$ et $N_R$ ses enfants, $v(N)$ la variable sur laquelle il coupe.
+$\mu_N$ est la moyenne **d'entraînement** de $y$ dans $N$, $H(N)$ son impureté, $\omega_N$ sa part
+des lignes. Les versions primées ($H'$, $\omega'$) sont les mêmes quantités comptées sur la
+**validation**.
 
-$$\mu_N = \frac{1}{|N \cap \mathcal{T}|}\sum_{i \in N \cap \mathcal{T}} y_i \qquad\text{(la moyenne d'entraînement dans } N\text{)}$$
-
-$$H(N) = \frac{1}{|N \cap \mathcal{T}|}\sum_{i \in N \cap \mathcal{T}} (y_i - \mu_N)^2 \qquad\text{(son impureté)}, \qquad \omega_N = \frac{|N \cap \mathcal{T}|}{|\mathcal{T}|}$$
-
-**1 · `mdi_train`** — le MDI classique, qui remonte à Breiman, Friedman, Olshen & Stone,
-*Classification and Regression Trees* (1984) :
+**1 · `mdi_train`** — Breiman, Friedman, Olshen & Stone, *CART* (1984) :
 
 $$\text{MDI}_j \;=\; \sum_{N \,:\, v(N) = j} \Big[\omega_N H(N) - \omega_{N_L} H(N_L) - \omega_{N_R} H(N_R)\Big]$$
 
-C'est la baisse d'impureté de la partie 3, additionnée sur tous les nœuds qui coupent sur $j$. Tout
-est déjà dans l'arbre : **aucune donnée nouvelle**.
+La baisse d'impureté de la partie 3, sommée sur les nœuds qui coupent sur $j$. Tout est déjà dans
+l'arbre : **aucune donnée nouvelle**.
 
-**2 · `mdi_oob`** — Li, Wang, Basu, Kumbier & Yu (2019), *A Debiased MDI Feature Importance Measure
-for Random Forests* :
+**2 · `mdi_oob`** — Li, Wang, Basu, Kumbier & Yu (2019) :
 
-$$\text{MDI-oob}_j \;=\; \frac{1}{|\mathcal{V}|}\sum_{i \in \mathcal{V}} \;\sum_{N \,:\, v(N)=j,\; x_i \to N} \big(\mu_{\text{enfant}(i)} - \mu_N\big)\, y_i$$
+$$\text{MDI-oob}_j \;=\; \frac{1}{|\mathcal{V}|}\sum_{i \in \mathcal{V}} \;\sum_{N \,:\, v(N)=j,\; x_i \to N} \big(\mu_{\text{enfant}} - \mu_N\big)\, y_i$$
 
-On fait descendre chaque ligne de validation $i$ dans l'arbre. À chaque coupure sur $j$ qu'elle
-traverse, on multiplie l'écart entre les deux moyennes **d'entraînement** par son vrai $y_i$ **de
-validation**.
+Chaque ligne de validation descend dans l'arbre ; à chaque coupure sur $j$, on multiplie l'écart
+entre moyennes **d'entraînement** par son vrai $y_i$ **de validation**. Sur une vraie coupure, les
+deux sont corrélés et la somme reconstruit la vraie baisse. Sur une coupure de bruit, ils sont
+indépendants et la somme tombe à $0$.
 
-Pourquoi ça marche, exactement : la contribution d'une coupure, en espérance sur des lignes
-fraîches, est $\sum_C \omega_C (\mu_C - \mu_N)\,\mathbb{E}[Y \mid X \in C]$. Et par définition
-$\mu_N$ est la moyenne pondérée de ses enfants, donc **$\sum_C \omega_C (\mu_C - \mu_N) = 0$**. Les
-deux cas en découlent :
+> Li et al. définissent ça sur les points **out-of-bag** d'une forêt. Un arbre unique n'en a pas,
+> donc $\mathcal{V}$ est ici le jeu de validation : leur formule sur d'autres données non vues.
 
-- **coupure réelle** : $\mathbb{E}[Y|C] = \mu_C$, et la somme vaut $\sum_C \omega_C (\mu_C - \mu_N)^2$ — la vraie baisse d'impureté ;
-- **coupure de bruit** : $\mathbb{E}[Y|C] = \mu_N$ (les enfants ont la même moyenne de population), et la somme vaut $\mu_N \sum_C \omega_C(\mu_C - \mu_N) = \mu_N \cdot 0 = \boxed{0}$.
+**3 · `ufi_half`** — Zhou & Hooker (2021) :
 
-> **C'est de là que vient la convention de centrage.** L'annulation $\sum_C \omega_C(\mu_C-\mu_N)=0$
-> est *exacte* en entraînement, mais en validation les poids $\omega'_C$ diffèrent, donc il reste un
-> petit résidu — **multiplié par $\mu_N$**. Si $y$ n'est pas centré, $\mu_N$ est de l'ordre de la
-> moyenne de $y$ et ce résidu explose (l'exemple et le contre-exemple sont exécutés plus bas, après
-> la figure). On soustrait toujours la moyenne d'**entraînement** — jamais celle de validation,
-> qu'on n'a pas le droit de regarder.
+$$\text{UFI}_j \;=\; \underbrace{\text{MDI}_j}_{\text{(a) entraînement}} \;+\; \underbrace{\sum_{N : v(N)=j} \big[\omega'_N H'(N) - \omega'_{N_L} H'(N_L) - \omega'_{N_R} H'(N_R)\big]}_{\text{(b) validation}}, \qquad \text{ufi\_half}_j = \frac{\text{UFI}_j}{2}$$
 
-> **Une déviation à signaler.** Li et al. définissent cette somme sur les points **out-of-bag**
-> d'une forêt — les lignes qu'un arbre n'a pas tirées dans son bootstrap. Un arbre unique n'en a
-> pas, donc $\mathcal{V}$ est ici le **jeu de validation**. C'est leur formule sur d'autres données
-> non vues, pas leur estimateur tel que publié.
+La même baisse d'impureté, calculée deux fois. **Le détail qui fait tout** : dans $H'$, les écarts
+sont mesurés contre $\mu_N$, la moyenne d'**entraînement**, pas celle de validation. Les lignes de
+validation sont donc notées contre une prédiction fixée à l'avance — une coupure qui ne se
+reproduit pas donne une baisse **négative**.
 
-**3 · `ufi_half`** — Zhou & Hooker (2021), *Unbiased Measurement of Feature Importance in
-Tree-Based Methods* :
+D'où le comportement des deux termes : sur une vraie coupure (b) $\to$ (a), donc
+$\text{UFI} \to 2\times$ la vraie baisse → **d'où la division par 2** ; sur une coupure de bruit
+(b) $\to -$(a), et tout s'annule. Vérifié sur `S1` : le rapport (b)/(a) sur le bruit vaut
+$\mathbf{-0{,}998}$.
 
-$$\text{UFI}_j \;=\; \underbrace{\text{MDI}_j}_{\text{terme (a)}} \;+\; \underbrace{\sum_{N : v(N)=j} \big[\omega'_N H'(N) - \omega'_{N_L} H'(N_L) - \omega'_{N_R} H'(N_R)\big]}_{\text{terme (b)}}, \qquad \text{ufi\_half}_j = \frac{\text{UFI}_j}{2}$$
-
-**La seule chose à comprendre, c'est $H'$.** C'est la même formule que $H$, avec les lignes de
-**validation** au numérateur — mais en gardant $\mu_N$, la moyenne d'**entraînement** :
-
-$$H'(N) = \frac{1}{|N \cap \mathcal{V}|}\sum_{i \in N \cap \mathcal{V}} (y_i - \underbrace{\mu_N}_{\text{entraînement !}})^2, \qquad \omega'_N = \frac{|N \cap \mathcal{V}|}{|\mathcal{V}|}$$
-
-C'est **tout** le mécanisme, et il tient à ce détail. Si on recalculait la moyenne sur la validation,
-$H'$ serait la vraie variance de validation dans le nœud, et la baisse serait de nouveau toujours
-$\geq 0$ — on aurait juste déplacé le biais. En gardant $\mu_N$, les lignes de validation sont notées
-contre une prédiction **fixée à l'avance** : une coupure qui ne se reproduit pas donne une baisse
-**négative**.
-
-Faisons le calcul exactement. Pour une ligne de validation $i$ du nœud $N$ qui descend vers
-l'enfant $C$, sa contribution au terme (b) est $(y_i - \mu_N)^2 - (y_i - \mu_C)^2$, qui se
-développe sans approximation en
-
-$$(y_i - \mu_N)^2 - (y_i - \mu_C)^2 \;=\; (\mu_C - \mu_N)\,\big(2 y_i - \mu_C - \mu_N\big)$$
-
-— exactement la ligne `gap * (2.0 * y[rows] - mean[parent] - mean[child])` du code plus bas. Il ne
-reste qu'à prendre l'espérance sur des lignes fraîches, et **deux cas apparaissent** :
-
-| | $\mathbb{E}[Y \mid X \in C]$ vaut | contribution moyenne au terme (b) |
-|---|---|---|
-| **coupure réelle** : les deux enfants ont des moyennes de population différentes | $\mu_C$ | $(\mu_C - \mu_N)(2\mu_C - \mu_C - \mu_N) = +(\mu_C - \mu_N)^2$ |
-| **coupure de bruit** : les deux enfants ont la *même* moyenne de population, $\mu_L \neq \mu_R$ n'est que du hasard d'échantillonnage | $\mu_N$ | $(\mu_C - \mu_N)(2\mu_N - \mu_C - \mu_N) = -(\mu_C - \mu_N)^2$ |
-
-Et comme le terme (a) vaut $\sum_C \omega_C (\mu_C - \mu_N)^2$ (l'identité classique de la baisse
-d'impureté), on obtient :
-
-- **coupure réelle** : terme (b) $\to +$ terme (a), donc $\text{UFI} \to 2 \times$ la vraie baisse → **d'où la division par 2** ;
-- **coupure de bruit** : terme (b) $\to -$ terme (a), les deux **s'annulent** → $\text{UFI} \to 0$.
-
-**Vérifions les deux prédictions.** Le rapport (b)/(a) devrait valoir $+1$ sur le signal et $-1$
-sur le bruit. Mesuré sur `S1` à $n = 20\,000$ **fixe** (seule la taille minimale de feuille varie),
-moyenne sur 20 répétitions :
-
-| feuille minimale | (b)/(a) sur le **signal** | (b)/(a) sur le **bruit** |
-|---|---|---|
-| $1$ — arbre complet | $+0{,}591$ | $-1{,}111$ |
-| $20$ | $+0{,}852$ | $\mathbf{-0{,}998}$ |
-| $50$ | $+0{,}901$ | *bruit jamais coupé* |
-| $200$ | $+0{,}924$ | *bruit jamais coupé* |
-
-Le $-1$ sur le bruit est touché à $0{,}2\,\%$ près : l'annulation est réelle, pas approximative.
-
-> **Mais le $+1$ sur le signal n'est pas atteint sur un arbre complet** — $+0{,}59$ seulement, et il
-> ne remonte qu'en forçant des feuilles larges. La raison : le terme (b) estime la vraie baisse,
-> alors que le terme (a) est **gonflé par le bruit absorbé** dès que les nœuds sont petits — c'est le
-> biais de la partie 6, qui frappe *aussi* les vraies variables dans les coupures profondes. Donc la
-> division par 2 est exacte à la limite, approximative en pratique : `ufi_half` **sous-estime** $I_j$
-> d'environ 20 % sur un arbre unique complet. C'est visible à l'œil dans la figure de la partie 10,
-> où les points verts tombent sous la diagonale.
-
-> **La division par 2 n'est pas dans l'article.** Zhou & Hooker ne s'en servent que pour *classer*
-> les variables, où une constante multiplicative est invisible. Nous comparons numériquement à
-> $I_j$, donc il faut la retirer.
+> **Deux réserves.** La division par 2 n'est pas dans l'article — Zhou & Hooker ne font que
+> *classer* les variables, où une constante est invisible ; nous comparons à $I_j$, donc il faut la
+> retirer. Et elle n'est exacte qu'à la limite : sur un arbre complet le terme (a) reste gonflé par
+> le bruit absorbé, donc `ufi_half` **sous-estime** $I_j$ d'environ 20 % — visible dans la figure de
+> la partie 10, où les points verts tombent sous la diagonale.
 
 ### Le vrai code
 
@@ -720,25 +658,14 @@ print("\nLa vérité est 0 dans les six cas : le décalage n'ajoute aucune infor
 """)
 
 md(r"""
-**Ce que ça montre.** Ajouter une constante à $y$ ne déplace **aucune information** — la vraie
-importance reste identique, et la bonne réponse pour la masse de bruit reste $0$ dans les six cas.
-Pourtant, sans centrage, le MDI-oob dérive de trois ordres de grandeur entre la première et la
-troisième ligne : il attribue aux cinq variables de bruit une importance massive, uniquement parce
-qu'on a changé l'origine de l'axe des $y$. Avec centrage, les trois lignes restent toutes à $0$ à
-quelques millièmes près.
+**Ce que ça montre.** Décaler $y$ n'ajoute **aucune information** : la bonne réponse reste $0$ dans
+les six cas. Sans centrage, le MDI-oob dérive quand même de trois ordres de grandeur et déclare les
+variables de bruit massivement importantes. `ufi_half`, lui, ne bouge dans aucun des deux blocs —
+ce qui confirme que le coupable est bien le facteur $\mu_N$ propre au MDI-oob.
 
-Notez aussi le **sens** de la dérive : il dépend du signe de $\mu_N$ et de la façon dont les poids
-$\omega'_C$ s'écartent des $\omega_C$, donc il n'est pas prévisible — ce qui est pire qu'un biais
-systématique, qu'on pourrait au moins corriger.
-
-Et la colonne `ufi_half` ne bouge dans aucun des deux blocs : c'est le **contre-exemple du
-contre-exemple**, qui confirme que le problème vient bien du facteur $\mu_N$ propre au MDI-oob, et
-pas d'autre chose dans le dispositif.
-
-> **Pourquoi la moyenne d'entraînement et pas celle de validation ?** Parce que la moyenne de
-> validation est une statistique calculée sur les données qu'on prétend n'avoir jamais vues. S'en
-> servir, même pour un simple recentrage, c'est laisser fuir de l'information du jeu de validation
-> vers la mesure — exactement le biais B qu'on essaie d'éliminer.
+> **Et pourquoi la moyenne d'entraînement ?** Parce que celle de validation est calculée sur des
+> données qu'on prétend n'avoir jamais vues : s'en servir, même pour recentrer, ferait fuir de
+> l'information — exactement le biais B qu'on veut éliminer.
 """)
 
 # ---------------------------------------------------------------- 9
@@ -760,41 +687,28 @@ toute la grille.
 Ce qui le rend *adaptatif* : le gain d'une coupure grandit comme $|N|$, la pénalité seulement comme
 $\log|N|$. Donc on élague **fort là où les données sont rares**, et peu là où elles sont nombreuses.
 
-### Pourquoi cette section est le cœur du projet
+### Pourquoi c'est le cœur du projet
 
-Les parties 1 à 8 sont du contexte. **C'est ici que se joue la question posée.** Trois raisons
-précises :
+Les parties 1 à 8 sont du contexte. **C'est ici que se joue la question posée**, pour trois
+raisons :
 
-**1 · L'élagage est littéralement ce que le sujet demande.** La consigne d'Erwan Scornet est
-d'« évaluer la pertinence d'un MDI construit sur des arbres (forêts) **moins profonds** (par exemple
-utilisant la dernière méthode), calculé sur un **jeu de données de validation** ». Les deux clauses
-désignent deux remèdes : « jeu de validation » → la partie 8, « moins profonds » → **cette partie**.
-Et « la dernière méthode » est précisément l'alpha-trimming (Surjanovic, Henrey & Loughin, 2024).
-Sauter cette section, c'est ne répondre qu'à la moitié du sujet.
+**1 · C'est la moitié du sujet.** La consigne de Scornet demande un MDI « sur des arbres **moins
+profonds** (par exemple utilisant la dernière méthode), calculé sur un **jeu de données de
+validation** ». Deux clauses, deux remèdes : la validation (partie 8) et l'élagage (ici), « la
+dernière méthode » désignant l'alpha-trimming.
 
-**2 · Rien ne garantit que ça marche — et c'est ça qui est intéressant.** Les deux remèdes ne sont
-pas symétriques :
+**2 · Rien ne garantit que ça marche.** Les deux remèdes ne coûtent pas la même chose : mesurer sur
+la validation laisse l'arbre intact, alors qu'élaguer **détruit du vrai signal** — le théorème 3 de
+Scornet (2023) dit que le MDI converge vers $\text{Var}(f_j(X_j))$ quand la profondeur
+$k \to \infty$, donc *plus profond est mieux en théorie*. Élaguer échange un biais contre un autre,
+et le solde peut être négatif.
 
-| | ce que ça retire | ce que ça coûte |
-|---|---|---|
-| mesurer sur la validation (partie 8) | le bruit absorbé | rien : l'arbre est inchangé |
-| élaguer (cette partie) | le bruit absorbé | **du vrai signal** : un arbre plus court approxime moins bien $f_j$ |
+**3 · La combinaison est la contribution.** Les deux remèdes existent séparément ; personne n'a
+testé leur conjonction. Soit ils attaquent des défauts **différents** et s'additionnent, soit ils
+attaquent **le même** (le bruit absorbé par la profondeur) et ce sont des **substituts**.
 
-Le théorème 3 de Scornet (2023) dit que le MDI de population converge vers $\text{Var}(f_j(X_j))$
-quand la profondeur $k \to \infty$ : **plus profond est mieux, en théorie**. Le biais qu'on combat
-est un effet d'échantillon fini. Donc élaguer échange un biais contre un autre, et le solde peut
-être négatif.
-
-**3 · La combinaison des deux est la contribution.** Chacun des deux remèdes existe déjà,
-publié séparément. Personne n'a testé ce que donne leur **conjonction**. Deux scénarios possibles,
-et il faut trancher entre eux :
-
-- ils attaquent des défauts **différents** → leurs effets s'additionnent, et pruning + validation bat validation seule ;
-- ils attaquent **le même** défaut (le bruit absorbé par la profondeur) → ce sont des **substituts**, et une fois le second appliqué, le premier ne fait plus que coûter de la résolution.
-
-La figure qui suit prépare le terrain : elle montre qu'un $\alpha$ optimal **existe** pour la
-prédiction. Toute la question est de savoir si celui qui optimise l'**importance** est au même
-endroit — et la partie 12 y répond avec les deux courbes superposées.
+La figure qui suit montre qu'un $\alpha$ optimal existe pour la **prédiction**. Toute la question
+est de savoir s'il est au même endroit pour l'**importance** — la partie 12 y répond.
 """)
 
 md(r"""
