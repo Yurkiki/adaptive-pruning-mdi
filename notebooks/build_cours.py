@@ -108,7 +108,7 @@ Fabriquons un jeu minuscule : le prix dépend du revenu, et **rien d'autre**.
 
 co(r"""
 revenu = np.array([1.5, 1.8, 2.0, 6.0, 6.5, 7.0])
-age    = np.array([40, 35, 30, 20, 25, 15], dtype=float)   # sans rapport avec le prix
+age    = np.array([40, 35, 18, 20, 25, 15], dtype=float)   # sans rapport avec le prix
 prix   = np.array([80, 95, 110, 350, 380, 400], dtype=float)
 
 print(f"{'quartier':>9} {'revenu':>7} {'age':>5} {'prix':>6}")
@@ -228,6 +228,70 @@ garder la coupure qui fait le plus baisser l'impureté, puis recommencer dans ch
 Une remarque qui servira beaucoup plus loin : **une coupure ne peut jamais faire *monter*
 l'impureté.** Dans le pire des cas elle ne change rien. Donc le gain est toujours ≥ 0 —
 **même pour une coupure sur une variable complètement inutile.**
+
+**Reste une question qu'on n'a pas encore posée : comment l'arbre *trouve*-t-il « revenu ≤ 4 » ?**
+On ne l'a pas encore montré — jusqu'ici on a seulement vérifié que cette coupure précise est bonne,
+pas qu'elle est la **meilleure** parmi toutes les possibles. Codons la recherche en entier, sans
+scikit-learn.
+""")
+
+co(r"""
+def meilleure_coupure(X, y):
+    '''Essaie chaque variable et chaque seuil candidat, garde le gain d'impureté le plus grand.'''
+    meilleur_gain, meilleure_var, meilleur_seuil = -1.0, None, None
+    for var in range(X.shape[1]):
+        valeurs = np.unique(X[:, var])
+        seuils = (valeurs[:-1] + valeurs[1:]) / 2        # un seuil entre chaque paire de voisins
+        for s in seuils:
+            gauche, droite = y[X[:, var] <= s], y[X[:, var] > s]
+            apres = (gauche.size/y.size)*impurete(gauche) + (droite.size/y.size)*impurete(droite)
+            gain = impurete(y) - apres
+            if gain > meilleur_gain:
+                meilleur_gain, meilleure_var, meilleur_seuil = gain, var, s
+    return meilleure_var, meilleur_seuil, meilleur_gain
+
+X = np.column_stack([revenu, age])
+var, seuil, gain = meilleure_coupure(X, prix)
+print(f"variable choisie parmi {X.shape[1]} : {['revenu', 'age'][var]}")
+print(f"seuil choisi (parmi {np.unique(X[:,0]).size - 1} seuils testés sur le revenu seul) : {seuil:.2f}")
+print(f"gain d'impureté : {gain:.1f}")
+""")
+
+md(r"""
+C'est tout ce que fait `.fit()` **à un nœud donné**. Et "recommencer dans chaque moitié", c'est de
+la récursion : on rappelle exactement la même fonction sur les lignes de gauche, puis sur celles de
+droite, jusqu'à ce qu'un critère d'arrêt soit atteint (profondeur maximale, nœud déjà pur, trop peu
+de lignes…). Codons aussi cette récursion :
+""")
+
+co(r"""
+def construire(X, y, profondeur, max_profondeur):
+    '''La meme recherche, appelee recursivement : c'est tout l'algorithme de construction.'''
+    if profondeur == max_profondeur or np.ptp(y) == 0:    # trop profond, ou le noeud est deja pur
+        return {"feuille": True, "moyenne": float(y.mean()), "n": int(y.size)}
+    var, seuil, gain = meilleure_coupure(X, y)
+    if gain <= 0:                                          # aucune coupure n'apporte rien
+        return {"feuille": True, "moyenne": float(y.mean()), "n": int(y.size)}
+    masque = X[:, var] <= seuil
+    return {
+        "feuille": False, "variable": ["revenu", "age"][var], "seuil": round(seuil, 2),
+        "gauche": construire(X[masque],  y[masque],  profondeur + 1, max_profondeur),
+        "droite": construire(X[~masque], y[~masque], profondeur + 1, max_profondeur),
+    }
+
+import pprint
+pprint.pprint(construire(X, prix, profondeur=0, max_profondeur=1))
+""")
+
+md(r"""
+Un dictionnaire imbriqué, construit à la main, qui retrouve exactement la coupure « revenu ≤ 4 »
+sans qu'on la lui ait jamais donnée. **C'est ça, construire un arbre.** `DecisionTreeRegressor.fit`
+fait précisément cette recherche-puis-récursion — en Cython, donc des centaines de fois plus vite,
+avec des critères d'arrêt plus riches (`min_samples_leaf`, `ccp_alpha`…), mais le même calcul.
+
+C'est aussi pourquoi on ne peut pas afficher son code avec `inspect.getsource`, comme on l'a fait
+pour `src/mdi.py` et `src/prune.py` : ces deux fichiers sont écrits en Python, mais `.fit()` est du
+code compilé, invisible depuis Python.
 """)
 
 # ---------------------------------------------------------------- 4
@@ -249,8 +313,10 @@ Vérifions-la sur notre petit exemple, où l'on **sait** que seul le revenu comp
 co(r"""
 from sklearn.tree import DecisionTreeRegressor
 
-X = np.column_stack([revenu, age])
 arbre = DecisionTreeRegressor(max_depth=1).fit(X, prix)
+
+print(f"seuil trouvé par scikit-learn : {arbre.tree_.threshold[0]:.2f}")
+print(f"seuil trouvé à la main        : {seuil:.2f}   <- la fonction meilleure_coupure de tout à l'heure\n")
 
 imp = arbre.tree_.compute_feature_importances(normalize=False)
 for nom, v in zip(["revenu", "âge   "], imp):
