@@ -509,9 +509,13 @@ for nom in ("mdi_train", "mdi_oob", "ufi_half"):
 md(r"""
 ### Les trois formules
 
-Notons $N$ un nœud interne, $N_L$ et $N_R$ ses deux enfants, $\omega_N$ la fraction des lignes
-d'entraînement tombées dans $N$, $\mu_N$ la moyenne d'entraînement de $y$ dans $N$, et $H(N)$ son
-impureté. $v(N)$ est la variable sur laquelle $N$ coupe.
+Notons $N$ un nœud interne, $N_L$ et $N_R$ ses deux enfants, $v(N)$ la variable sur laquelle $N$
+coupe, $\mathcal{T}$ les lignes d'entraînement et $\mathcal{V}$ celles de validation. Deux
+quantités, à ne pas confondre :
+
+$$\mu_N = \frac{1}{|N \cap \mathcal{T}|}\sum_{i \in N \cap \mathcal{T}} y_i \qquad\text{(la moyenne d'entraînement dans } N\text{)}$$
+
+$$H(N) = \frac{1}{|N \cap \mathcal{T}|}\sum_{i \in N \cap \mathcal{T}} (y_i - \mu_N)^2 \qquad\text{(son impureté)}, \qquad \omega_N = \frac{|N \cap \mathcal{T}|}{|\mathcal{T}|}$$
 
 **1 · `mdi_train`** — le MDI classique, qui remonte à Breiman, Friedman, Olshen & Stone,
 *Classification and Regression Trees* (1984) :
@@ -528,8 +532,22 @@ $$\text{MDI-oob}_j \;=\; \frac{1}{|\mathcal{V}|}\sum_{i \in \mathcal{V}} \;\sum_
 
 On fait descendre chaque ligne de validation $i$ dans l'arbre. À chaque coupure sur $j$ qu'elle
 traverse, on multiplie l'écart entre les deux moyennes **d'entraînement** par son vrai $y_i$ **de
-validation**. Pour une variable de bruit, le signe de ce produit est essentiellement aléatoire :
-les termes se compensent et la somme tombe vers 0.
+validation**.
+
+Pourquoi ça marche, exactement : la contribution d'une coupure, en espérance sur des lignes
+fraîches, est $\sum_C \omega_C (\mu_C - \mu_N)\,\mathbb{E}[Y \mid X \in C]$. Et par définition
+$\mu_N$ est la moyenne pondérée de ses enfants, donc **$\sum_C \omega_C (\mu_C - \mu_N) = 0$**. Les
+deux cas en découlent :
+
+- **coupure réelle** : $\mathbb{E}[Y|C] = \mu_C$, et la somme vaut $\sum_C \omega_C (\mu_C - \mu_N)^2$ — la vraie baisse d'impureté ;
+- **coupure de bruit** : $\mathbb{E}[Y|C] = \mu_N$ (les enfants ont la même moyenne de population), et la somme vaut $\mu_N \sum_C \omega_C(\mu_C - \mu_N) = \mu_N \cdot 0 = \boxed{0}$.
+
+> **C'est de là que vient la convention de centrage.** L'annulation $\sum_C \omega_C(\mu_C-\mu_N)=0$
+> est *exacte* en entraînement, mais en validation les poids $\omega'_C$ diffèrent, donc il reste un
+> petit résidu — **multiplié par $\mu_N$**. Si $y$ n'est pas centré, $\mu_N$ est de l'ordre de la
+> moyenne de $y$ et ce résidu explose. Mesuré sur `S1` avec un décalage de $+236$ (des prix en k\$) :
+> masse de bruit $-0{,}02$ en centrant, $+7{,}32$ sans centrer. On soustrait toujours la moyenne
+> d'**entraînement** — jamais celle de validation, qu'on n'a pas le droit de regarder.
 
 > **Une déviation à signaler.** Li et al. définissent cette somme sur les points **out-of-bag**
 > d'une forêt — les lignes qu'un arbre n'a pas tirées dans son bootstrap. Un arbre unique n'en a
@@ -539,12 +557,47 @@ les termes se compensent et la somme tombe vers 0.
 **3 · `ufi_half`** — Zhou & Hooker (2021), *Unbiased Measurement of Feature Importance in
 Tree-Based Methods* :
 
-$$\text{UFI}_j \;=\; \underbrace{\text{MDI}_j}_{\text{entraînement}} \;+\; \underbrace{\sum_{N : v(N)=j} \big[\omega'_N H'(N) - \omega'_{N_L} H'(N_L) - \omega'_{N_R} H'(N_R)\big]}_{\text{même formule, impuretés } H' \text{ mesurées en validation}}, \qquad \text{ufi\_half}_j = \frac{\text{UFI}_j}{2}$$
+$$\text{UFI}_j \;=\; \underbrace{\text{MDI}_j}_{\text{terme (a)}} \;+\; \underbrace{\sum_{N : v(N)=j} \big[\omega'_N H'(N) - \omega'_{N_L} H'(N_L) - \omega'_{N_R} H'(N_R)\big]}_{\text{terme (b)}}, \qquad \text{ufi\_half}_j = \frac{\text{UFI}_j}{2}$$
 
-La même baisse d'impureté, calculée deux fois : une fois sur l'entraînement, une fois sur la
-validation (contre les moyennes d'entraînement). Sur une vraie coupure les deux termes convergent
-vers **la même** quantité, d'où la division par 2 ; sur une coupure de bruit le second terme est
-négatif et annule le premier.
+**La seule chose à comprendre, c'est $H'$.** C'est la même formule que $H$, avec les lignes de
+**validation** au numérateur — mais en gardant $\mu_N$, la moyenne d'**entraînement** :
+
+$$H'(N) = \frac{1}{|N \cap \mathcal{V}|}\sum_{i \in N \cap \mathcal{V}} (y_i - \underbrace{\mu_N}_{\text{entraînement !}})^2, \qquad \omega'_N = \frac{|N \cap \mathcal{V}|}{|\mathcal{V}|}$$
+
+C'est **tout** le mécanisme, et il tient à ce détail. Si on recalculait la moyenne sur la validation,
+$H'$ serait la vraie variance de validation dans le nœud, et la baisse serait de nouveau toujours
+$\geq 0$ — on aurait juste déplacé le biais. En gardant $\mu_N$, les lignes de validation sont notées
+contre une prédiction **fixée à l'avance** : une coupure qui ne se reproduit pas donne une baisse
+**négative**.
+
+Faisons le calcul exactement. Pour une ligne de validation $i$ du nœud $N$ qui descend vers
+l'enfant $C$, sa contribution au terme (b) est $(y_i - \mu_N)^2 - (y_i - \mu_C)^2$, qui se
+développe sans approximation en
+
+$$(y_i - \mu_N)^2 - (y_i - \mu_C)^2 \;=\; (\mu_C - \mu_N)\,\big(2 y_i - \mu_C - \mu_N\big)$$
+
+— exactement la ligne `gap * (2.0 * y[rows] - mean[parent] - mean[child])` du code plus bas. Il ne
+reste qu'à prendre l'espérance sur des lignes fraîches, et **deux cas apparaissent** :
+
+| | $\mathbb{E}[Y \mid X \in C]$ vaut | contribution moyenne au terme (b) |
+|---|---|---|
+| **coupure réelle** : les deux enfants ont des moyennes de population différentes | $\mu_C$ | $(\mu_C - \mu_N)(2\mu_C - \mu_C - \mu_N) = +(\mu_C - \mu_N)^2$ |
+| **coupure de bruit** : les deux enfants ont la *même* moyenne de population, $\mu_L \neq \mu_R$ n'est que du hasard d'échantillonnage | $\mu_N$ | $(\mu_C - \mu_N)(2\mu_N - \mu_C - \mu_N) = -(\mu_C - \mu_N)^2$ |
+
+Et comme le terme (a) vaut $\sum_C \omega_C (\mu_C - \mu_N)^2$ (l'identité classique de la baisse
+d'impureté), on obtient :
+
+- **coupure réelle** : terme (b) $\to +$ terme (a), donc $\text{UFI} \to 2 \times$ la vraie baisse → **d'où la division par 2** ;
+- **coupure de bruit** : terme (b) $\to -$ terme (a), les deux **s'annulent** → $\text{UFI} \to 0$.
+
+> **Attention, cette convergence suppose des nœuds assez peuplés.** Le terme (b) estime la vraie
+> baisse ; le terme (a), lui, est gonflé par le bruit absorbé dès que le nœud est petit (c'est le
+> biais de la partie 6, qui frappe *aussi* les vraies variables dans les coupures profondes). Mesuré
+> sur `S1`, le rapport (b)/(a) sur les variables de signal vaut **+0,44 sur un arbre complet** et ne
+> monte vers $+1$ qu'en forçant des feuilles larges : +0,74 (feuille ≥ 20), +0,86 (≥ 50), +0,91
+> (≥ 200), **+0,99** (≥ 600). Le rapport $-1$ sur le bruit, lui, se voit immédiatement : $-1{,}20$
+> sur l'arbre complet. Donc la division par 2 est exacte à la limite, approximative en pratique —
+> `ufi_half` sous-estime $I_j$ d'environ 20 % sur un arbre unique.
 
 > **La division par 2 n'est pas dans l'article.** Zhou & Hooker ne s'en servent que pour *classer*
 > les variables, où une constante multiplicative est invisible. Nous comparons numériquement à
@@ -619,16 +672,21 @@ md(r"""
 **Le remède fonctionne.** Le bruit passe d'une masse franchement positive à quelque chose
 d'indiscernable de zéro.
 
-Deux détails techniques que le projet a dû établir, et qui ne sont dans aucun des deux articles :
+Un dernier fait qui n'est dans aucun des deux articles, et qui découle de l'algèbre ci-dessus :
+**l'UFI est insensible au décalage de $y$, le MDI-oob non.** Le MDI-oob porte un facteur $\mu_N$ qui
+grandit avec la moyenne de $y$ ; l'UFI, écrit en différences de carrés, n'en a pas. Mesuré sur `S1`
+**sans** centrer, masse de bruit :
 
-> **Centrer $y$.** La formule du MDI-oob multiplie par $y_i$. Si $y$ n'est pas centré (des prix,
-> par exemple), un terme parasite s'ajoute et détruit la mesure. On soustrait la moyenne
-> d'**entraînement** — jamais celle de validation, qu'on n'a pas le droit de regarder.
-> L'UFI, elle, est insensible à ce décalage.
->
-> **Diviser l'UFI par 2.** Ses deux termes convergent vers *la même* quantité, donc leur somme vaut
-> deux fois la vraie baisse. Zhou & Hooker ne s'en servent que pour **classer** les variables, où
-> une constante multiplicative est invisible — la question ne se posait pas chez eux.
+| décalage de $y$ | `mdi_oob` | `ufi_half` |
+|---|---|---|
+| $0$ | $-0{,}023$ | $-0{,}014$ |
+| $+10$ | $+0{,}245$ | $-0{,}014$ |
+| $+236$ | $\mathbf{+7{,}320}$ | $-0{,}012$ |
+
+C'est pourquoi on centre toujours : c'est le MDI-oob qui l'exige. (L'UFI bouge quand même d'un
+cheveu, $-0{,}0138 \to -0{,}0117$, parce que le décalage change marginalement les coupures que
+scikit-learn choisit — son critère de scission perd un peu de précision numérique sur de grands
+$y$. Ce n'est pas la mesure qui dérive, c'est l'arbre.)
 """)
 
 # ---------------------------------------------------------------- 9
