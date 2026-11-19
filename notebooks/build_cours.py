@@ -493,7 +493,7 @@ X_val, y_val = X_all[val], y_all[val] - centre
 cfg = models.ModelConfig(kind="tree")
 modele = models.grow(X_tr, y_tr, cfg, seed=0)
 
-mesures = mdi.all_measures(modele, X_val, y_val, d)
+mesures = mdi.all_measures(modele, X_val, y_val, d) #mdi_train n'utilise pas X_val et y_val car les impurité sont déjà stocké dans chaque noeud quand on a construit l'arbre
 
 print(f"{'variable':>10} {'vérité':>8} {'mdi_train':>11} {'mdi_oob':>9} {'ufi_half':>9}")
 for j in range(d):
@@ -507,9 +507,47 @@ for nom in ("mdi_train", "mdi_oob", "ufi_half"):
 """)
 
 md(r"""
-**`mdi.all_measures` n'est pas une boîte noire.** Voici le vrai code de `src/mdi.py`, le même qui
-vient de produire les chiffres ci-dessus — pas une reformulation, la source exacte avec ses
-commentaires d'origine :
+### Les trois formules
+
+Notons $N$ un nœud interne, $N_L$ et $N_R$ ses deux enfants, $\omega_N$ la fraction des lignes
+d'entraînement tombées dans $N$, $\mu_N$ la moyenne d'entraînement de $y$ dans $N$, et $H(N)$ son
+impureté. $v(N)$ est la variable sur laquelle $N$ coupe.
+
+**1 · `mdi_train`** — le MDI classique, qui remonte à Breiman (CART, 1984) :
+
+$$\text{MDI}_j \;=\; \sum_{N \,:\, v(N) = j} \Big[\omega_N H(N) - \omega_{N_L} H(N_L) - \omega_{N_R} H(N_R)\Big]$$
+
+C'est la baisse d'impureté de la partie 3, additionnée sur tous les nœuds qui coupent sur $j$. Tout
+est déjà dans l'arbre : **aucune donnée nouvelle**.
+
+**2 · `mdi_oob`** — Li, Wang, Basu, Kumbier & Yu (2019), *A Debiased MDI Feature Importance Measure
+for Random Forests* :
+
+$$\text{MDI-oob}_j \;=\; \frac{1}{|\mathcal{V}|}\sum_{i \in \mathcal{V}} \;\sum_{N \,:\, v(N)=j,\; x_i \to N} \big(\mu_{\text{enfant}(i)} - \mu_N\big)\, y_i$$
+
+On fait descendre chaque ligne de validation $i$ dans l'arbre. À chaque coupure sur $j$ qu'elle
+traverse, on multiplie l'écart entre les deux moyennes **d'entraînement** par son vrai $y_i$ **de
+validation**. Pour une variable de bruit, le signe de ce produit est essentiellement aléatoire :
+les termes se compensent et la somme tombe vers 0.
+
+**3 · `ufi_half`** — Zhou & Hooker (2021), *Unbiased Measurement of Feature Importance in
+Tree-Based Methods* :
+
+$$\text{UFI}_j \;=\; \underbrace{\text{MDI}_j}_{\text{entraînement}} \;+\; \underbrace{\sum_{N : v(N)=j} \big[\omega'_N H'(N) - \omega'_{N_L} H'(N_L) - \omega'_{N_R} H'(N_R)\big]}_{\text{même formule, impuretés } H' \text{ mesurées en validation}}, \qquad \text{ufi\_half}_j = \frac{\text{UFI}_j}{2}$$
+
+La même baisse d'impureté, calculée deux fois : une fois sur l'entraînement, une fois sur la
+validation (contre les moyennes d'entraînement). Sur une vraie coupure les deux termes convergent
+vers **la même** quantité, d'où la division par 2 ; sur une coupure de bruit le second terme est
+négatif et annule le premier.
+
+> **La division par 2 n'est pas dans l'article.** Zhou & Hooker ne s'en servent que pour *classer*
+> les variables, où une constante multiplicative est invisible. Nous comparons numériquement à
+> $I_j$, donc il faut la retirer.
+
+### Le vrai code
+
+Ce ne sont pas des reformulations : voici la source exacte de `src/mdi.py`, celle qui a produit les
+chiffres ci-dessus.
 """)
 
 co(r"""
@@ -520,9 +558,9 @@ print(inspect.getsource(mdi.mdi_train))
 
 md(r"""
 `tree.feature[nodes] >= 0` repère les nœuds internes (une feuille a `feature = -2`). `weight` est
-le nombre de lignes d'entraînement par nœud, `impurity` sa variance : `drop` est exactement la
-baisse d'impureté pondérée qu'on calculait à la main en partie 3, pour **chaque** nœud de l'arbre
-en une seule fois. `np.add.at` additionne ce gain dans la case de la variable qui a fait la coupure.
+le nombre de lignes d'entraînement par nœud, `impurity` son $H$ : `drop` est le crochet de la
+formule 1, calculé pour **tous** les nœuds d'un coup. `np.add.at` l'additionne dans la case de la
+variable qui a fait la coupure — c'est le $\sum_{N : v(N)=j}$.
 
 Et la version qui répare le biais — elle ne touche plus à `tree.impurity` du tout, elle **refait
 descendre** `x`, `y` de validation dans l'arbre déjà construit :
@@ -538,6 +576,21 @@ qui a servi à `predict` depuis le début). À chaque cran, `mean[child] - mean[
 entre les deux moyennes **d'entraînement**, et on le multiplie par le vrai `y` de validation — jamais
 vu par l'arbre. C'est tout l'algorithme de Li et al. : rien de plus qu'une multiplication accumulée
 pendant la descente.
+
+Enfin l'UFI, qui est littéralement la somme des deux termes de la formule 3 :
+""")
+
+co(r"""
+print(inspect.getsource(mdi.off_sample_drop))
+print(inspect.getsource(mdi.ufi))
+""")
+
+md(r"""
+`off_sample_drop` est le second terme : la docstring note qu'il est algébriquement identique à
+$\omega'_N H'(N) - \omega'_{N_L} H'(N_L) - \omega'_{N_R} H'(N_R)$, parce que
+$(y - \mu_N)^2 - (y - \mu_{\text{enfant}})^2$ se factorise exactement en l'expression codée. Et
+`ufi` ne fait plus qu'additionner `mdi_train` et ce terme — la division par 2 est appliquée une
+seule fois, dans `model_ufi_half`.
 """)
 
 co(r"""
