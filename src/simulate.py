@@ -121,9 +121,16 @@ def scenario_s4(snr: float = 4.0, n_noise: int = 5) -> Scenario:
 # products and multi-variable indicators, so Var(f_j(X_j)) is the population MDI
 # of no tree and there is nothing to measure bias against.
 #
-# Models 1 and 8 carry no noise term in the paper. A noiseless response leaves no
-# sigma^2 for a deep tree to absorb, which is the very bias under study, so the
-# noise level here is set through the SNR as in every other scenario.
+# Noise is set through the SNR here, as in every other scenario, which departs
+# from the paper twice and deliberately:
+#
+#   - models 1 and 8 carry no noise term at all. A noiseless response leaves no
+#     sigma^2 for a deep tree to absorb, which is the very bias under study;
+#   - model 6's noise is -1{N(0,1) > 1.25}, a Bernoulli of variance ~0.094, not
+#     a Gaussian. Only its variance matters for the absorption mechanism, but the
+#     distribution is not the paper's.
+#
+# What the paper's own noise corresponds to in SNR terms is recorded in PROTOCOL.
 
 
 def _tilde(x: FloatArray) -> FloatArray:
@@ -244,6 +251,11 @@ class ScenarioFactory(Protocol):
 
 def _duroux_factory(tag: str) -> ScenarioFactory:
     def make(snr: float = 4.0, n_noise: int = 0) -> Scenario:
+        if n_noise:
+            raise ValueError(
+                f"{tag} takes its feature count from the paper, so n_noise does "
+                f"not apply; pass d= to duroux() to narrow it instead"
+            )
         return duroux(tag, snr=snr)
 
     return make

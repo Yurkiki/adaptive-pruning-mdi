@@ -220,10 +220,12 @@ rejected explicitly rather than silently.
 Each contribution is centred and its variance obtained by quadrature, then
 checked against Monte Carlo in the tests. Two notes on faithfulness:
 
-- **Models 1 and 8 carry no noise term in the paper.** A noiseless response
-  leaves no `sigma^2` for a deep tree to absorb — which is the entire bias under
-  study — so noise is set through the SNR here, as in every other scenario. The
-  column above records what the paper's own noise would correspond to.
+- **Noise comes from the SNR here**, which departs from the paper twice. Models 1
+  and 8 carry no noise term at all, and a noiseless response leaves no `sigma^2`
+  for a deep tree to absorb — the entire bias under study. Model 6's noise is
+  `-1{N(0,1) > 1.25}`, a Bernoulli of variance ≈ 0.094, not a Gaussian; only its
+  variance matters for the absorption mechanism, but the distribution is not the
+  paper's. The column above records what the paper's own noise corresponds to.
 - **`N(0, 0.5)`** is read as a standard deviation, the R convention, since the
   paper's experiments were run in R. If it means a variance, the SNR column
   halves. Worth one line of confirmation.

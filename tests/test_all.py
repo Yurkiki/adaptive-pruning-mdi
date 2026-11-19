@@ -116,6 +116,14 @@ def test_duroux_places_signals_at_the_paper_indices() -> None:
     assert simulate.duroux("DS1").n_features == 50
 
 
+def test_duroux_factory_rejects_n_noise() -> None:
+    """The DS models fix d themselves, so silently ignoring n_noise would mislead."""
+    make = simulate.SCENARIOS["DS3"]
+    assert make(snr=4.0).n_features == 100
+    with pytest.raises(ValueError):
+        make(snr=4.0, n_noise=20)
+
+
 def test_duroux_rejects_the_models_with_interactions() -> None:
     """2, 5 and 7 are not additive, so Var(f_j) is the MDI of no tree."""
     for tag in ("DS2", "DS5", "DS7"):
