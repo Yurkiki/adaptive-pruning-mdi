@@ -194,9 +194,9 @@ H_avant = impurete(prix)
 H_apres = (len(gauche)/len(prix))*impurete(gauche) + (len(droite)/len(prix))*impurete(droite)
 
 print(f"impureté AVANT la coupure : {H_avant:8.1f}")
-print(f"impureté APRÈS (pondérée) : {H_apres:8.1f}")
+print(f"impureté APRÈS (pondérée) : {H_apres:8.1f}") # pondéré par nb de points dans chaque noeud
 print(f"{'':>26} {'-'*8}")
-print(f"baisse d'impureté         : {H_avant - H_apres:8.1f}   <- le gain de cette coupure")
+print(f"baisse d'impureté         : {H_avant - H_apres:8.1f}   <- le gain de cette coupure") #ce que sklearn optimise en interne
 """)
 
 co(r"""
@@ -352,6 +352,7 @@ y_bruit = rng.normal(size=100)           # y sans aucun rapport
 
 complet = DecisionTreeRegressor(random_state=0).fit(X_bruit, y_bruit)   # arbre complet
 imp = complet.tree_.compute_feature_importances(normalize=False)
+#à chaque nœud, scikit-learn garde en mémoire l'impureté de ce nœud (calculée sur les lignes d'entraînement tombées dedans)
 
 print("vérité :  0.000  pour les cinq variables\n")
 for j, v in enumerate(imp):
