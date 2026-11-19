@@ -547,11 +547,40 @@ $\text{UFI} \to 2\times$ la vraie baisse → **d'où la division par 2** ; sur u
 (b) $\to -$(a), et tout s'annule. Vérifié sur `S1` : le rapport (b)/(a) sur le bruit vaut
 $\mathbf{-0{,}998}$.
 
-> **Deux réserves.** La division par 2 n'est pas dans l'article — Zhou & Hooker ne font que
-> *classer* les variables, où une constante est invisible ; nous comparons à $I_j$, donc il faut la
-> retirer. Et elle n'est exacte qu'à la limite : sur un arbre complet le terme (a) reste gonflé par
-> le bruit absorbé, donc `ufi_half` **sous-estime** $I_j$ d'environ 20 % — visible dans la figure de
-> la partie 10, où les points verts tombent sous la diagonale.
+> **La division par 2 n'est pas dans l'article.** Zhou & Hooker ne font que *classer* les
+> variables, où une constante multiplicative est invisible. Nous comparons chaque chiffre à $I_j$,
+> donc il faut la retirer.
+
+#### L'étude empirique qui la justifie
+
+Le facteur 2 sort de la théorie. On l'a vérifié en mesurant le rapport $\text{UFI}/I_j$ sur `S1`,
+arbre complet, 20 répétitions, à plusieurs tailles d'échantillon :
+
+| $n$ | $\text{UFI}/I_j$ | $\text{ufi\_half}/I_j$ |
+|---|---|---|
+| $1\,000$ | $1{,}54$ | $0{,}77$ |
+| $3\,000$ | $1{,}68$ | $0{,}84$ |
+| $20\,000$ | $1{,}89$ | $0{,}94$ |
+| $60\,000$ | $\mathbf{1{,}94}$ | $\mathbf{0{,}97}$ |
+
+Le rapport **monte vers 2** quand $n$ grandit : le facteur n'est pas postulé, il se voit. Ce qui le
+retient à petit $n$, c'est que $\mu_C$ est estimée sur peu de lignes — elle décrit l'échantillon
+plutôt que la population, et le terme (b) ne retrouve pas sur des lignes fraîches l'écart que (a)
+croit voir.
+
+**Et diviser reste le bon choix même quand le rapport n'est pas exactement 2.** Erreur quadratique
+contre $I_j$ (arbre complet, $n = 20\,000$) : $0{,}322$ sans la division, $\mathbf{0{,}001}$ avec —
+**300 fois moins**.
+
+> **Pourquoi ne pas ajuster le diviseur au cas par cas ?** Le diviseur optimal vaut $1{,}89$ ici,
+> $1{,}54$ à $n = 1\,000$. On pourrait le choisir à chaque fois… mais il se calcule **à partir de
+> $I_j$, la vérité**, qui n'existe pas sur données réelles. Un diviseur ajusté sur la vérité ne
+> serait pas une mesure : on validerait la méthode avec l'information qu'elle est censée retrouver.
+> Le 2 vient de la théorie, c'est ce qui le rend utilisable.
+
+**Le biais qui reste est documenté, pas caché** : `ufi_half` sous-estime $I_j$ de $23\,\%$ à
+$n = 1\,000$ — la taille utilisée dans ce notebook, d'où les points verts sous la diagonale dans la
+figure de la partie 10 — et de $3\,\%$ seulement à $n = 60\,000$.
 
 ### Le vrai code
 
