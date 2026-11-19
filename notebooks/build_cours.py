@@ -594,14 +594,6 @@ print(inspect.getsource(mdi.off_sample_drop))
 print(inspect.getsource(mdi.ufi))
 """)
 
-md(r"""
-`off_sample_drop` est le second terme : la docstring note qu'il est algébriquement identique à
-$\omega'_N H'(N) - \omega'_{N_L} H'(N_L) - \omega'_{N_R} H'(N_R)$, parce que
-$(y - \mu_N)^2 - (y - \mu_{\text{enfant}})^2$ se factorise exactement en l'expression codée. Et
-`ufi` ne fait plus qu'additionner `mdi_train` et ce terme — la division par 2 est appliquée une
-seule fois, dans `model_ufi_half`.
-""")
-
 co(r"""
 fig, ax = plt.subplots(figsize=(7.6, 3.6))
 noms = ["mdi_train\n(classique)", "mdi_oob\n(validation)", "ufi_half\n(validation)"]
