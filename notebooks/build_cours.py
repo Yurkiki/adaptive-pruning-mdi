@@ -647,6 +647,18 @@ Un dernier fait qui n'est dans aucun des deux articles, et qui découle de l'alg
 **l'UFI est insensible au décalage de $y$, le MDI-oob non.** Le MDI-oob porte un facteur $\mu_N$ qui
 grandit avec la moyenne de $y$ ; l'UFI, écrit en différences de carrés, n'en a pas.
 
+**Ce que « décaler $y$ » veut dire.** Dans `S1`, $y$ est centré autour de 0. On simule un cas
+réaliste où il ne le serait pas — des prix en k\$ — en ajoutant $236$ à **toutes** les valeurs.
+C'est un changement d'**origine de l'axe**, comme passer des degrés Celsius aux Kelvin : les écarts
+entre points sont identiques, seul le zéro bouge. Donc $I_j$ ne change pas, les variables de bruit
+valent toujours $I_j = 0$, et **la bonne réponse reste $0$**.
+
+Et centrer, c'est remettre ce zéro en place : soustraire la moyenne d'entraînement donne à la
+racine une moyenne de $\mu_{\text{racine}} = 0$ **exactement** — quel que soit le décalage de
+départ. (La racine de *validation*, elle, ne vaut pas exactement 0 : c'est un autre échantillon.
+C'est ce petit résidu, multiplié par $\mu_N$, qui fait dériver le MDI-oob ; le centrage le rend
+petit sans l'annuler.)
+
 La cellule suivante le met à l'épreuve : le **contre-exemple** (sans centrage) puis l'**exemple**
 (avec centrage), sur le même arbre et les mêmes données, en décalant $y$ de $0$, $+10$ puis $+236$.
 """)
