@@ -36,12 +36,12 @@ error at every pruning level.
 
 | File | Contents |
 |---|---|
-| `src/simulate.py` | additive data generator; true importance `I_j = Var(f_j(X_j))` known analytically |
+| `src/simulate.py` | additive generators — S1, S4 and the five additive Duroux & Scornet models; true importance `I_j = Var(f_j(X_j))` known analytically |
 | `src/tree.py` | tree arrays detached from scikit-learn; `Model` = one tree or a forest |
 | `src/models.py` | the pruning families (full, global depth control, cost-complexity, alpha-trimming), tuned by K-fold CV |
 | `src/mdi.py` | the three measures: `mdi_train`, `mdi_oob`, `ufi_half` |
 | `src/prune.py` | alpha-trimming (Algorithm 1 of Surjanovic, Henrey & Loughin 2024) |
-| `src/realdata.py` | real datasets with injected known-junk columns |
+| `src/realdata.py` | real datasets with injected known-junk columns (paused: simulated data first) |
 | `src/experiment.py` | run loop; writes the results CSV and the pruning-path CSV |
 | `src/analyse.py` | bias/variance/MSE, noise mass, AUC, Kendall tau, paired Wilcoxon |
 | `tests/test_all.py` | the tests, including the exact training-data identity |

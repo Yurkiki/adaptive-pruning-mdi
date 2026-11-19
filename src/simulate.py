@@ -7,6 +7,7 @@ from typing import Callable, Protocol
 
 import numpy as np
 import numpy.typing as npt
+from scipy import integrate
 
 FloatArray = npt.NDArray[np.float64]
 BoolArray = npt.NDArray[np.bool_]
@@ -112,13 +113,146 @@ def scenario_s4(snr: float = 4.0, n_noise: int = 5) -> Scenario:
     return Scenario(f"S4_snr{snr:g}", signals + (NOISE,) * n_noise, snr)
 
 
+# --- Duroux & Scornet (2016), section 4 ------------------------------------
+#
+# The eight regression models of arXiv:1603.04261, page 9. Covariates are
+# uniform on [0,1]^d and the models are written in Xt = 2(X - 0.5), uniform on
+# [-1,1]. Only the ADDITIVE ones are reproduced here: models 2, 5 and 7 contain
+# products and multi-variable indicators, so Var(f_j(X_j)) is the population MDI
+# of no tree and there is nothing to measure bias against.
+#
+# Models 1 and 8 carry no noise term in the paper. A noiseless response leaves no
+# sigma^2 for a deep tree to absorb, which is the very bias under study, so the
+# noise level here is set through the SNR as in every other scenario.
+
+
+def _tilde(x: FloatArray) -> FloatArray:
+    """The paper's Xt = 2(X - 0.5): uniform on [-1, 1]."""
+    return np.asarray(2.0 * x - 1.0, dtype=np.float64)
+
+
+def from_function(
+    name: str,
+    raw: Callable[[FloatArray], FloatArray],
+    breaks: tuple[float, ...] = (),
+) -> Component:
+    """Centre a contribution and integrate its variance over X ~ U[0,1].
+
+    `breaks` lists discontinuities so the quadrature does not straddle them.
+    """
+    points = list(breaks) if breaks else None
+
+    def scalar(power: int) -> float:
+        value, _ = integrate.quad(
+            lambda t: float(raw(np.array([t]))[0]) ** power,
+            0.0, 1.0, points=points, limit=200,
+        )
+        return float(value)
+
+    mean = scalar(1)
+    variance = scalar(2) - mean**2
+
+    def centred(x: FloatArray) -> FloatArray:
+        return np.asarray(raw(x) - mean, dtype=np.float64)
+
+    return Component(name, centred, variance)
+
+
+def _place(d: int, components: dict[int, Component]) -> tuple[Component, ...]:
+    """Put each contribution at its own feature index; the rest is noise."""
+    if components and max(components) >= d:
+        raise ValueError(f"a component sits past the last of {d} features")
+    return tuple(components.get(j, NOISE) for j in range(d))
+
+
+def _ds1_components() -> dict[int, Component]:
+    return {
+        0: from_function("Xt^2", lambda x: _tilde(x) ** 2),
+        1: from_function("exp(-Xt^2)", lambda x: np.exp(-_tilde(x) ** 2)),
+    }
+
+
+def _ds3_components() -> dict[int, Component]:
+    return {
+        0: from_function("-sin(2Xt)", lambda x: -np.sin(2.0 * _tilde(x))),
+        1: from_function("Xt^2", lambda x: _tilde(x) ** 2),
+        2: from_function("Xt", _tilde),
+        3: from_function("-exp(-Xt)", lambda x: -np.exp(-_tilde(x))),
+    }
+
+
+def _ds4_components() -> dict[int, Component]:
+    def wave(x: FloatArray) -> FloatArray:
+        t = 2.0 * np.pi * _tilde(x)
+        return np.asarray(
+            np.sin(t) + 2.0 * np.cos(t) + 3.0 * np.sin(t) ** 2 + 4.0 * np.cos(t) ** 2,
+            dtype=np.float64,
+        )
+
+    def ratio(x: FloatArray) -> FloatArray:
+        t = np.sin(2.0 * np.pi * _tilde(x))
+        return np.asarray(t / (2.0 - t), dtype=np.float64)
+
+    return {
+        0: from_function("Xt", _tilde),
+        1: from_function("(2Xt-1)^2", lambda x: (2.0 * _tilde(x) - 1.0) ** 2),
+        2: from_function("sin/(2-sin)", ratio),
+        3: from_function("trig", wave),
+    }
+
+
+def _ds6_components() -> dict[int, Component]:
+    # 1{Xt^3 < 0} is 1{Xt < 0}: a fair coin, variance exactly 1/4
+    step = from_function("1{Xt<0}", lambda x: (_tilde(x) ** 3 < 0).astype(np.float64),
+                         breaks=(0.5,))
+    return {k: step for k in range(10)}
+
+
+def _ds8_components() -> dict[int, Component]:
+    return {
+        0: from_function("Xt", _tilde),
+        2: from_function("3Xt^2", lambda x: 3.0 * _tilde(x) ** 2),
+        4: from_function("-2exp(-Xt)", lambda x: -2.0 * np.exp(-_tilde(x))),
+        5: from_function("Xt", _tilde),
+    }
+
+
+_DUROUX = {
+    "DS1": (50, _ds1_components),
+    "DS3": (100, _ds3_components),
+    "DS4": (100, _ds4_components),
+    "DS6": (30, _ds6_components),
+    "DS8": (1000, _ds8_components),
+}
+
+# the sample size each model is given in the paper
+DUROUX_SIZES = {"DS1": 800, "DS3": 600, "DS4": 600, "DS6": 500, "DS8": 500}
+
+
+def duroux(tag: str, snr: float = 4.0, d: int | None = None) -> Scenario:
+    """An additive model of Duroux & Scornet (2016), section 4."""
+    if tag not in _DUROUX:
+        raise ValueError(f"{tag} is not an additive model; pick from {sorted(_DUROUX)}")
+    default_d, build = _DUROUX[tag]
+    width = default_d if d is None else d
+    return Scenario(f"{tag}_snr{snr:g}", _place(width, build()), snr)
+
+
 class ScenarioFactory(Protocol):
     def __call__(self, snr: float = ..., n_noise: int = ...) -> Scenario: ...
+
+
+def _duroux_factory(tag: str) -> ScenarioFactory:
+    def make(snr: float = 4.0, n_noise: int = 0) -> Scenario:
+        return duroux(tag, snr=snr)
+
+    return make
 
 
 SCENARIOS: dict[str, ScenarioFactory] = {
     "S1": scenario_s1,
     "S4": scenario_s4,
+    **{tag: _duroux_factory(tag) for tag in _DUROUX},
 }
 
 

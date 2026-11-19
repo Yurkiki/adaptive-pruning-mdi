@@ -167,7 +167,7 @@ Every clause of the brief now has code behind it:
 | arbres moins profonds, de manière adaptative | `src/prune.py` — alpha-trimming, plus cost-complexity as a second adaptive method |
 | calculé sur un jeu de données de validation | `src/experiment.py` — literal train/validation split; pruning tuned by CV inside the training split |
 | jeux de données simulées | `src/simulate.py` — S1, S4, with analytic `I_j` |
-| jeux de données réelles | `src/realdata.py` — diabetes, California Housing, with injected junk columns |
+| jeux de données réelles | `src/realdata.py` — built, but **paused on Scornet's instruction** (see below) |
 | évaluer la pertinence | `src/analyse.py` — metrics, paired tests, six figures |
 
 48 tests. Model code: `src/tree.py` (tree arrays, `Model`), `src/models.py` (families, CV tuning).
@@ -181,6 +181,56 @@ Remaining, in order:
 | 2 | **Low-SNR scenario.** [SHL24] say pruning pays off most when the signal-to-noise ratio is low, and every run so far is at SNR = 4 | the condition their method is designed for is the one we have not tried |
 | 3 | **A finer alpha grid** `{0, 0.1, ..., 3.0}` for final numbers (`ModelConfig.alpha_grid`) | runs use an 11-point grid for speed |
 | 4 | **Reproduce one [SHL24] benchmark** | independent check that our transcription of Algorithm 1 is faithful |
+| 5 | **Run the Duroux--Scornet models** (below) beside S1 and S4 | scenarios Scornet pointed us at; wider `d`, sparser signal |
+
+## Simulated data only, for now
+
+Scornet, on the scope:
+
+> « données simulées pour le moment : comme la véritable importance sur les jeux
+> de données réelles est inconnue, il sera plus difficile de commenter les
+> résultats. »
+
+`src/realdata.py` works and is kept, but it is **out of scope until the simulated
+picture is settled**. Our own measurements back the instruction: on a heavily
+pruned single tree the injected-share metric reads a flawless 0.00% simply
+because 16 of 18 features sit at exactly zero — `scored` catches it, but it means
+real data cannot adjudicate anything yet.
+
+### The Duroux & Scornet models
+
+He also pointed at the eight regression models of
+[Duroux & Scornet (2016)](https://hal.science/hal-01287521), section 4, page 9.
+Covariates are uniform on `[0,1]^d`, and the models are written in
+`Xt = 2(X - 0.5)`, uniform on `[-1,1]`.
+
+**Only five are usable here.** Models 2, 5 and 7 contain products and
+multi-variable indicators, so `Var(f_j(X_j))` is the population MDI of no tree
+([S20] Lemma 2) and there is no ground truth to measure bias against. They are
+rejected explicitly rather than silently.
+
+| tag | `d` | `n` (paper) | signal features | `sum I_j` | the paper's own SNR |
+|---|---|---|---|---|---|
+| `DS1` | 50 | 800 | 2 | 0.129 | noiseless |
+| `DS3` | 100 | 600 | 4 | 1.449 | 5.8 |
+| `DS4` | 100 | 600 | 4 | 9.920 | 39.7 |
+| `DS6` | 30 | 500 | 10 | 2.500 | 26.5 |
+| `DS8` | 1000 | 500 | 4 (at indices 0, 2, 4, 5) | 3.196 | noiseless |
+
+Each contribution is centred and its variance obtained by quadrature, then
+checked against Monte Carlo in the tests. Two notes on faithfulness:
+
+- **Models 1 and 8 carry no noise term in the paper.** A noiseless response
+  leaves no `sigma^2` for a deep tree to absorb — which is the entire bias under
+  study — so noise is set through the SNR here, as in every other scenario. The
+  column above records what the paper's own noise would correspond to.
+- **`N(0, 0.5)`** is read as a standard deviation, the R convention, since the
+  paper's experiments were run in R. If it means a variance, the SNR column
+  halves. Worth one line of confirmation.
+
+```sh
+python src/experiment.py --scenario DS3 --sizes 600 --reps 20 --out results/ds3.csv
+```
 
 ## What we found: forests, earlier code
 

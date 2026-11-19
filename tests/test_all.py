@@ -73,6 +73,72 @@ def test_rescaled_component_hits_target_variance() -> None:
     assert abs(estimate - 0.004) < 4.0 * stderr
 
 
+# --- Duroux & Scornet models ----------------------------------------------
+
+DUROUX_TAGS = ("DS1", "DS3", "DS4", "DS6", "DS8")
+
+
+@pytest.mark.parametrize("tag", DUROUX_TAGS)
+def test_duroux_component_variances_match_monte_carlo(tag: str) -> None:
+    """Each contribution's quadrature variance must survive a Monte Carlo check."""
+    scenario = simulate.duroux(tag)
+    rng = np.random.default_rng(0)
+    for component in scenario.components:
+        if component.variance == 0.0:
+            continue
+        estimate, stderr = simulate.monte_carlo_variance(component, 400_000, rng)
+        assert abs(estimate - component.variance) < 5.0 * stderr
+
+
+@pytest.mark.parametrize("tag", DUROUX_TAGS)
+def test_duroux_components_are_centred(tag: str) -> None:
+    rng = np.random.default_rng(1)
+    for component in simulate.duroux(tag).components:
+        if component.variance == 0.0:
+            continue  # a noise feature is the zero function: nothing to centre
+        values = component.func(rng.random(200_000))
+        assert abs(values.mean()) < 5.0 * values.std() / np.sqrt(values.size)
+
+
+@pytest.mark.parametrize("tag", DUROUX_TAGS)
+def test_duroux_variance_decomposition(tag: str) -> None:
+    scenario = simulate.duroux(tag, d=40)
+    _, y = simulate.sample(scenario, 400_000, np.random.default_rng(2))
+    expected = scenario.true_importance.sum() + scenario.sigma**2
+    assert float(y.var()) == pytest.approx(expected, rel=0.02)
+
+
+def test_duroux_places_signals_at_the_paper_indices() -> None:
+    """Model 8 is X1 + 3X3^2 - 2exp(-X5) + X6, so the gaps matter."""
+    signals = np.flatnonzero(~simulate.duroux("DS8").is_noise)
+    assert signals.tolist() == [0, 2, 4, 5]
+    assert np.flatnonzero(~simulate.duroux("DS6").is_noise).tolist() == list(range(10))
+    assert simulate.duroux("DS1").n_features == 50
+
+
+def test_duroux_rejects_the_models_with_interactions() -> None:
+    """2, 5 and 7 are not additive, so Var(f_j) is the MDI of no tree."""
+    for tag in ("DS2", "DS5", "DS7"):
+        with pytest.raises(ValueError):
+            simulate.duroux(tag)
+
+
+def test_duroux_step_component_has_the_exact_bernoulli_variance() -> None:
+    step = simulate.duroux("DS6").components[0]
+    assert step.variance == pytest.approx(0.25, abs=1e-6)
+
+
+def test_duroux_runs_end_to_end() -> None:
+    config = experiment.RunConfig(
+        scenario="DS3", n_test=200,
+        model=models.ModelConfig(kind="tree", cv_folds=2),
+    )
+    rows, _ = experiment.run_one(simulate.duroux("DS3", d=25), 160, 0, config)
+    frame = pd.DataFrame(rows)
+    assert frame["value"].notna().all()
+    assert frame["arm"].nunique() == 7
+
+
 # --- model construction ----------------------------------------------------
 
 
