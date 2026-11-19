@@ -23,7 +23,9 @@ SERIES = {"mdi_train": "#2a78d6", "mdi_oob": "#eb6834", "ufi_half": "#1baf7a"}
 ACCENT = "#4a3aa7"
 
 MEASURE_ORDER = ["mdi_train", "mdi_oob", "ufi_half"]
-ARM_ORDER = ["standard", "full", "global", "ccp", "alpha0", "alpha", "oracle"]
+ARM_ORDER = [
+    "standard", "full", "global", "ccp", "alpha0", "alpha", "oracle", "oracle_oob",
+]
 
 
 # --- metrics ---------------------------------------------------------------
@@ -174,6 +176,7 @@ Comparison = tuple[tuple[str, str], tuple[str, str], str]
 
 HEADLINE: tuple[Comparison, ...] = (
     (("alpha", "ufi_half"), ("alpha0", "ufi_half"), "pruning alone, held out  [same base]"),
+    (("alpha", "mdi_oob"), ("alpha0", "mdi_oob"), "pruning alone, validation only  [same base]"),
     (("alpha", "mdi_train"), ("alpha0", "mdi_train"), "pruning alone, in sample  [same base]"),
     (("alpha", "ufi_half"), ("global", "ufi_half"), "alpha-trimming vs global depth control"),
     (("alpha", "ufi_half"), ("ccp", "ufi_half"), "alpha-trimming vs cost-complexity"),
@@ -184,7 +187,11 @@ HEADLINE: tuple[Comparison, ...] = (
     # the row above it is the same question at an equal sample budget
     (("alpha", "ufi_half"), ("full", "mdi_train"), "combined, at equal sample budget"),
     (("alpha", "ufi_half"), ("standard", "mdi_train"), "combined vs standard practice"),
+    # the brief read literally: shallower trees AND a measure that borrows nothing
+    # from the training rows
+    (("alpha", "mdi_oob"), ("standard", "mdi_train"), "the brief, vs standard practice"),
     (("oracle", "ufi_half"), ("alpha", "ufi_half"), "oracle vs CV alpha"),
+    (("oracle_oob", "mdi_oob"), ("alpha", "mdi_oob"), "oracle vs CV alpha, validation only"),
 )
 
 

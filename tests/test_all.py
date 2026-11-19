@@ -144,7 +144,7 @@ def test_duroux_runs_end_to_end() -> None:
     rows, _ = experiment.run_one(simulate.duroux("DS3", d=25), 160, 0, config)
     frame = pd.DataFrame(rows)
     assert frame["value"].notna().all()
-    assert frame["arm"].nunique() == 7
+    assert frame["arm"].nunique() == 5 + len(experiment.ORACLE_ARMS) + 1
 
 
 # --- model construction ----------------------------------------------------
@@ -528,7 +528,9 @@ SMALL_RUN = experiment.RunConfig(n_reps=1, n_test=200)
 def test_run_one_emits_every_arm_and_the_whole_pruning_path() -> None:
     rows, path_rows = experiment.run_one(SCENARIO, 150, 0, SMALL_RUN)
 
-    split_arms = {"full", "global", "ccp", "alpha0", "alpha", "oracle"}
+    split_arms = {"full", "global", "ccp", "alpha0", "alpha"} | set(
+        experiment.ORACLE_ARMS.values()
+    )
     expected = (len(split_arms) * len(mdi.MEASURES) + 1) * FEATURES
     assert len(rows) == expected
     assert {r["arm"] for r in rows} == split_arms | {"standard"}
@@ -543,20 +545,36 @@ def test_run_one_emits_every_arm_and_the_whole_pruning_path() -> None:
 
 
 def test_oracle_never_loses_to_the_cv_pruning_level() -> None:
-    """The oracle picks on importance error, so by construction it cannot be worse."""
+    """Each oracle picks on its own measure's error, so it cannot be worse there."""
     rows, _ = experiment.run_one(SCENARIO, 200, 0, SMALL_RUN)
     frame = pd.DataFrame(rows)
     truth = SCENARIO.true_importance
 
-    def error(arm: str) -> float:
+    def error(arm: str, measure: str) -> float:
         values = (
-            frame[(frame["arm"] == arm) & (frame["measure"] == experiment.ORACLE_MEASURE)]
+            frame[(frame["arm"] == arm) & (frame["measure"] == measure)]
             .sort_values("feature")["value"]
             .to_numpy(dtype=np.float64)
         )
         return float(((values - truth) ** 2).sum())
 
-    assert error("oracle") <= error("alpha") + 1e-12
+    for measure, arm in experiment.ORACLE_ARMS.items():
+        assert error(arm, measure) <= error("alpha", measure) + 1e-12
+
+
+def test_each_oracle_is_tied_to_its_own_measure() -> None:
+    """An oracle bounds pruning only for the measure it was selected on.
+
+    Reading the ufi_half oracle at mdi_oob is just some other pruning level, so
+    the per-measure oracles must be allowed to sit at different levels.
+    """
+    rows, _ = experiment.run_one(SCENARIO, 200, 0, SMALL_RUN)
+    frame = pd.DataFrame(rows)
+    levels = {
+        arm: frame[frame["arm"] == arm]["selected_param"].iloc[0]
+        for arm in experiment.ORACLE_ARMS.values()
+    }
+    assert set(levels) == {"oracle", "oracle_oob"}
 
 
 def test_standard_arm_uses_every_point() -> None:

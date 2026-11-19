@@ -135,7 +135,8 @@ because that is what practitioners actually do.
 | `ccp` | cost-complexity `ccp_alpha` chosen by CV | a second adaptive method |
 | `alpha0` | `min_samples_leaf = 5` base, no trimming | the clean baseline for `alpha` |
 | `alpha` | alpha-trimming, alpha chosen by CV | **the method under study** |
-| `oracle` | alpha chosen by importance error | simulation only; bounds what pruning could deliver |
+| `oracle` | alpha chosen by `ufi_half` importance error | simulation only; bounds what pruning could deliver |
+| `oracle_oob` | alpha chosen by `mdi_oob` importance error | the same bound for the validation-only measure; the two oracles land on different levels in roughly a third of reps, so one cannot stand in for the other |
 
 **`alpha` vs `global` is the whole project.** Is *adaptive* pruning better than
 merely *shallower* trees? `alpha` vs `alpha0` isolates the pruning alone.
@@ -176,7 +177,7 @@ Remaining, in order:
 
 | # | Do | Why |
 |---|---|---|
-| 0 | **Re-run every finding below on single trees** (S1, S4, several `n` and SNR) | the numbers below were measured on forests |
+| 0 | **Re-run every finding below on single trees** (S1, S4, several `n` and SNR) | the numbers below were measured on forests; finding 6 has now been redone, see below |
 | 1 | **Validation-fraction sweep** — `--val-fraction 0.2 0.33 0.5` | at `n=250` the held-out set is 83 rows against 167 leaves in the full tree; untested |
 | 2 | **Low-SNR scenario.** [SHL24] say pruning pays off most when the signal-to-noise ratio is low, and every run so far is at SNR = 4 | the condition their method is designed for is the one we have not tried |
 | 3 | **A finer alpha grid** `{0, 0.1, ..., 3.0}` for final numbers (`ModelConfig.alpha_grid`) | runs use an 11-point grid for speed |
@@ -277,6 +278,16 @@ noise inflation left for pruning to remove, so pruning only costs it resolution.
 to choose alpha using the true `I_j`, picked alpha = 0 in 16 repetitions of 16.
 That is not a weak null: the arm that exists to separate "pruning does not help"
 from "OOB chose badly" answers the first.
+
+> **Redone on a single tree, and the mechanism is not identical.** `S1`, `n = 1000`,
+> SNR 4, 20 reps, median importance error: the oracle picks `alpha > 0` in 16 reps
+> of 20 for `ufi_half` and 14 of 20 for `mdi_oob` — it does *not* refuse to prune
+> the way it does on forests. But the gain it buys is **0.2%** (`ufi_half`:
+> 0.0142 to 0.0142) and **2.6%** (`mdi_oob`: 0.0186 to 0.0181): the best available
+> pruning is worth nothing. Meanwhile the level CV actually selects **doubles** the
+> error (+131% and +96%). The conclusion survives on a stronger footing — it is not
+> that pruning cannot help, it is that the most it could help is negligible while
+> the practical selector actively hurts.
 
 > **The caveat that bounds this.** Alpha-trimming did not improve *prediction*
 > either in that regime (test MSE also minimised at alpha = 0), and [SHL24]

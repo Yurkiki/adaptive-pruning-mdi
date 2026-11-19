@@ -46,7 +46,11 @@ PATH_COLUMNS = (
     "importance_error", "cv_mse", "test_mse", "mean_leaves",
 )
 
-ORACLE_MEASURE = "ufi_half"
+# One oracle per held-out measure. An oracle chosen on ufi_half bounds what
+# pruning could deliver *for ufi_half*; read at mdi_oob it is just some other
+# level, so the "pruning does not help" claim needs its own oracle per measure.
+ORACLE_MEASURES = ("ufi_half", "mdi_oob")
+ORACLE_ARMS = {"ufi_half": "oracle", "mdi_oob": "oracle_oob"}
 
 
 @dataclass(frozen=True)
@@ -69,19 +73,21 @@ def select_oracle(
     x_val: FloatArray,
     y_val: FloatArray,
     truth: FloatArray,
+    measure: str = "ufi_half",
 ) -> models.Fitted:
-    """Pick the pruning level that minimises importance error rather than CV error.
+    """Pick the pruning level that minimises `measure`'s importance error.
 
     Only available in simulation. It bounds what pruning could deliver, so that a
     null result for the honest arm can be read as "pruning does not help" or
-    "CV chose the wrong amount" rather than being ambiguous between the two.
+    "CV chose the wrong amount" rather than being ambiguous between the two. The
+    bound is measure-specific, hence one oracle per held-out measure.
     """
 
     def error(fit: models.Fitted) -> float:
-        estimate = mdi.all_measures(fit.model, x_val, y_val, truth.size)[ORACLE_MEASURE]
+        estimate = mdi.all_measures(fit.model, x_val, y_val, truth.size)[measure]
         return importance_error(estimate, truth)
 
-    return replace(min(path.fits, key=error), name="oracle")
+    return replace(min(path.fits, key=error), name=ORACLE_ARMS[measure])
 
 
 def run_one(
@@ -113,7 +119,10 @@ def run_one(
         "ccp": models.select_by_cv(ccp),
         "alpha0": models.select_level(alpha, 0.0, "alpha0"),
         "alpha": models.select_by_cv(alpha),
-        "oracle": select_oracle(alpha, x_val, y_val, truth),
+        **{
+            ORACLE_ARMS[m]: select_oracle(alpha, x_val, y_val, truth, m)
+            for m in ORACLE_MEASURES
+        },
     }
     overall = float(y.mean())
     standard = models.build(models.FULL, x, y - overall, setup, rep)

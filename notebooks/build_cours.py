@@ -1029,8 +1029,23 @@ Sur l'ensemble des scénarios et des niveaux de bruit (20 répétitions, deux ta
 L'importance attribuée à des variables prouvées inutiles chute d'un facteur allant jusqu'à 40, et
 ce sur toute la gamme de bruit testée.
 
-**2 · L'élagage n'ajoute rien par-dessus.** Aucun niveau d'élagage n'améliore la mesure sur données
-séparées. L'oracle lui-même — qui a le droit de tricher — refuse d'élaguer.
+**2 · L'élagage n'ajoute rien par-dessus.** Mesuré sur un arbre unique (`S1`, $n = 1000$,
+20 répétitions), erreur d'importance médiane :
+
+| mesure | sans élagage | **oracle** (triche) | **alpha** (choisi par VC) |
+|---|---|---|---|
+| `ufi_half` | $0{,}0142$ | $0{,}0142$ — gain **0,2 %** | $0{,}0330$ — **+131 %** |
+| `mdi_oob` | $0{,}0186$ | $0{,}0181$ — gain **2,6 %** | $0{,}0364$ — **+96 %** |
+
+Deux lectures, et la seconde est la plus parlante. L'oracle — libre de choisir $\alpha$ en
+regardant la vérité — élague bien un peu, mais ne gagne que $0{,}2$ à $2{,}6\,\%$ : le meilleur
+élagage possible ne vaut rien. Et le niveau que la validation croisée choisit réellement **double
+l'erreur**, parce qu'elle optimise la prédiction, pas l'importance.
+
+> **Nuance de portée.** Sur les forêts, l'oracle choisissait $\alpha = 0$ dans 16 répétitions sur
+> 16 — il refusait purement et simplement d'élaguer. Sur un arbre unique il élague faiblement dans
+> la plupart des répétitions, pour un gain négligeable. La conclusion est la même, le mécanisme
+> est un peu moins net.
 
 **3 · Et il y a une raison mécanique.** Les deux remèdes s'attaquent à **la même chose** : le bruit
 absorbé par un arbre trop profond. L'élagage le retire en raccourcissant l'arbre ; la mesure sur
