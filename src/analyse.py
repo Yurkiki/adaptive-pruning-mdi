@@ -24,7 +24,8 @@ ACCENT = "#4a3aa7"
 
 MEASURE_ORDER = ["mdi_train", "mdi_oob", "ufi_half"]
 ARM_ORDER = [
-    "standard", "full", "global", "ccp", "alpha0", "alpha", "oracle", "oracle_oob",
+    "standard", "full", "global", "ccp", "alpha0", "alpha",
+    "oracle", "oracle_oob", "oracle_train",
 ]
 
 
@@ -192,6 +193,14 @@ HEADLINE: tuple[Comparison, ...] = (
     (("alpha", "mdi_oob"), ("standard", "mdi_train"), "the brief, vs standard practice"),
     (("oracle", "ufi_half"), ("alpha", "ufi_half"), "oracle vs CV alpha"),
     (("oracle_oob", "mdi_oob"), ("alpha", "mdi_oob"), "oracle vs CV alpha, validation only"),
+    # best-possible pruning against no pruning, one line per measure: the question
+    # "could pruning ever help this measure" with the tuning failure ruled out
+    (("oracle_train", "mdi_train"), ("alpha0", "mdi_train"), "best pruning, in sample  [S20's remedy]"),
+    (("oracle_oob", "mdi_oob"), ("alpha0", "mdi_oob"), "best pruning, validation only"),
+    (("oracle", "ufi_half"), ("alpha0", "ufi_half"), "best pruning, held out"),
+    # the two remedies head to head, each at its best: pruning the classic MDI as
+    # well as it can be pruned, against the held-out measure with no pruning
+    (("oracle_train", "mdi_train"), ("alpha0", "ufi_half"), "S20's remedy vs ZH21's remedy"),
 )
 
 

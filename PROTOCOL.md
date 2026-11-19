@@ -135,7 +135,7 @@ because that is what practitioners actually do.
 | `ccp` | cost-complexity `ccp_alpha` chosen by CV | a second adaptive method |
 | `alpha0` | `min_samples_leaf = 5` base, no trimming | the clean baseline for `alpha` |
 | `alpha` | alpha-trimming, alpha chosen by CV | **the method under study** |
-| `oracle` | alpha chosen by `ufi_half` importance error | simulation only; bounds what pruning could deliver |
+| `oracle` | alpha chosen by `ufi_half` importance error | simulation only; an **optimistic** bound, see below |
 | `oracle_oob` | alpha chosen by `mdi_oob` importance error | the same bound for the validation-only measure; the two oracles land on different levels in roughly a third of reps, so one cannot stand in for the other |
 
 **`alpha` vs `global` is the whole project.** Is *adaptive* pruning better than
@@ -158,6 +158,25 @@ trees to 76-82% of full, so `ccp` and `global` were near-copies of `full`, while
 alpha-trimming spanned the real range (41 leaves at `alpha = 0`, 20 at `alpha = 1`,
 6 at `alpha = 2`). A single tree is pruned much harder by CV: in a first run at
 `n = 1000`, from 667 leaves (`full`) to about 30 (`global`, `alpha`) and 12 (`ccp`).
+
+> **The oracle double-dips, and it matters.** It selects alpha on `x_val, y_val`
+> and the reported value is computed on those same rows, so it overfits them.
+> Measured on S1 and S4 at `n = 1200`, 100 repetitions, against an oracle that
+> selects on a *separate* held-out split:
+>
+> | scenario | measure | our oracle | honest oracle | honest wins |
+> |---|---|---|---|---|
+> | S1 | `mdi_oob` | **-3.2%** | **+2.6%** | 27/100 |
+> | S1 | `ufi_half` | **-1.1%** | **+2.0%** | 26/100 |
+> | S4 | `mdi_oob` | **-11.5%** | **+3.4%** | 44/100 |
+> | S4 | `ufi_half` | **-6.2%** | **+4.0%** | 28/100 |
+>
+> The sign flips in all four cells. Our oracle's apparent 1-11% gain over
+> `alpha = 0` is an artefact; with honest selection, the best available pruning
+> *loses* 2-4%. Read the oracle as a ceiling ("pruning cannot beat this"), never
+> as an achievable score. This strengthens the negative result rather than
+> weakening it: the ceiling itself is barely above `alpha = 0`, and anything
+> reachable sits below it.
 
 ## Status
 

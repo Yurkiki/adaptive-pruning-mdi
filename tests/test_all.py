@@ -574,7 +574,7 @@ def test_each_oracle_is_tied_to_its_own_measure() -> None:
         arm: frame[frame["arm"] == arm]["selected_param"].iloc[0]
         for arm in experiment.ORACLE_ARMS.values()
     }
-    assert set(levels) == {"oracle", "oracle_oob"}
+    assert set(levels) == set(experiment.ORACLE_ARMS.values())
 
 
 def test_standard_arm_uses_every_point() -> None:

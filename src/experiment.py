@@ -46,11 +46,17 @@ PATH_COLUMNS = (
     "importance_error", "cv_mse", "test_mse", "mean_leaves",
 )
 
-# One oracle per held-out measure. An oracle chosen on ufi_half bounds what
-# pruning could deliver *for ufi_half*; read at mdi_oob it is just some other
-# level, so the "pruning does not help" claim needs its own oracle per measure.
-ORACLE_MEASURES = ("ufi_half", "mdi_oob")
-ORACLE_ARMS = {"ufi_half": "oracle", "mdi_oob": "oracle_oob"}
+# One oracle per measure. An oracle chosen on ufi_half bounds what pruning could
+# deliver *for ufi_half*; read at another measure it is just some other level, so
+# the "pruning does not help" claim needs its own oracle per measure. The
+# mdi_train oracle is the one that makes [S20]'s remedy comparable to [ZH21]'s:
+# best-possible pruning of the classic MDI, against the held-out measure unpruned.
+ORACLE_MEASURES = ("ufi_half", "mdi_oob", "mdi_train")
+ORACLE_ARMS = {
+    "ufi_half": "oracle",
+    "mdi_oob": "oracle_oob",
+    "mdi_train": "oracle_train",
+}
 
 
 @dataclass(frozen=True)
@@ -80,7 +86,16 @@ def select_oracle(
     Only available in simulation. It bounds what pruning could deliver, so that a
     null result for the honest arm can be read as "pruning does not help" or
     "CV chose the wrong amount" rather than being ambiguous between the two. The
-    bound is measure-specific, hence one oracle per held-out measure.
+    bound is measure-specific, hence one oracle per measure.
+
+    It selects on `x_val, y_val`, the same rows the reported value is later
+    computed on, so its number is **optimistic** -- an upper bound, not an
+    achievable score. Measured on S1/S4 at n = 1200 over 100 repetitions, the
+    optimism is 3% to 11%, and it flips the sign: this oracle appears to beat
+    alpha = 0 by 1-11%, while an oracle that selects on a separate held-out split
+    *loses* to alpha = 0 by 2-4% and wins in only 26-44 reps of 100. Read a gain
+    here as "pruning cannot do better than this", never as "pruning delivers
+    this".
     """
 
     def error(fit: models.Fitted) -> float:
