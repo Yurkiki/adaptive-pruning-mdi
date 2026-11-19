@@ -513,7 +513,8 @@ Notons $N$ un nœud interne, $N_L$ et $N_R$ ses deux enfants, $\omega_N$ la frac
 d'entraînement tombées dans $N$, $\mu_N$ la moyenne d'entraînement de $y$ dans $N$, et $H(N)$ son
 impureté. $v(N)$ est la variable sur laquelle $N$ coupe.
 
-**1 · `mdi_train`** — le MDI classique, qui remonte à Breiman (CART, 1984) :
+**1 · `mdi_train`** — le MDI classique, qui remonte à Breiman, Friedman, Olshen & Stone,
+*Classification and Regression Trees* (1984) :
 
 $$\text{MDI}_j \;=\; \sum_{N \,:\, v(N) = j} \Big[\omega_N H(N) - \omega_{N_L} H(N_L) - \omega_{N_R} H(N_R)\Big]$$
 
@@ -529,6 +530,11 @@ On fait descendre chaque ligne de validation $i$ dans l'arbre. À chaque coupure
 traverse, on multiplie l'écart entre les deux moyennes **d'entraînement** par son vrai $y_i$ **de
 validation**. Pour une variable de bruit, le signe de ce produit est essentiellement aléatoire :
 les termes se compensent et la somme tombe vers 0.
+
+> **Une déviation à signaler.** Li et al. définissent cette somme sur les points **out-of-bag**
+> d'une forêt — les lignes qu'un arbre n'a pas tirées dans son bootstrap. Un arbre unique n'en a
+> pas, donc $\mathcal{V}$ est ici le **jeu de validation**. C'est leur formule sur d'autres données
+> non vues, pas leur estimateur tel que publié.
 
 **3 · `ufi_half`** — Zhou & Hooker (2021), *Unbiased Measurement of Feature Importance in
 Tree-Based Methods* :
