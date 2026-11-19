@@ -236,6 +236,19 @@ def pruning_path(
     )
 
 
+def select_level(path: PruningPath, level: float, name: str | None = None) -> Fitted:
+    """The fit at an exact grid level, found by value rather than by position.
+
+    alpha0 is the unpruned end of the alpha path. Reading it off `fits[0]` would
+    silently return a pruned model if the grid were ever reordered, and alpha0 is
+    the baseline the whole pruning comparison rests on.
+    """
+    for fit in path.fits:
+        if fit.selected_param == level:
+            return fit if name is None else replace(fit, name=name)
+    raise ValueError(f"level {level} is not on this path: {path.levels}")
+
+
 def select_by_cv(path: PruningPath, name: str | None = None) -> Fitted:
     best = min(path.fits, key=lambda fit: fit.cv_mse)
     return best if name is None else replace(best, name=name)

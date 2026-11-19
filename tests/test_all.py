@@ -6,6 +6,8 @@ the training means and the row routing in a single exact assertion.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -161,6 +163,24 @@ def test_ccp_level_means_the_same_alpha_in_cv_and_in_the_fit(data) -> None:
     )
     for a, b in zip(grown, direct, strict=True):
         assert a.mean_leaves == b.mean_leaves
+
+
+def test_alpha0_is_found_by_value_not_by_position(data) -> None:
+    """alpha0 is the unpruned end of the path, and the baseline for every
+    pruning comparison. Reading it off fits[0] would silently hand back a pruned
+    model if the grid were reordered."""
+    x, y = data
+    shuffled = replace(TREE, alpha_grid=(1.0, 0.0, 2.0))
+    path = models.pruning_path(models.ALPHA, x, y, shuffled, 0)
+
+    assert path.fits[0].selected_param == 1.0  # position 0 is NOT alpha = 0
+    unpruned = models.select_level(path, 0.0, "alpha0")
+    assert unpruned.selected_param == 0.0
+    assert unpruned.mean_leaves > path.fits[0].mean_leaves
+    assert unpruned.name == "alpha0"
+
+    with pytest.raises(ValueError):
+        models.select_level(path, 99.0)
 
 
 def test_selection_takes_the_lowest_cv_error(data) -> None:

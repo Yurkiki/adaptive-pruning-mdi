@@ -111,7 +111,7 @@ def run_one(
         "full": models.build(models.FULL, x_train, y_train, setup, rep),
         "global": models.build(models.GLOBAL, x_train, y_train, setup, rep),
         "ccp": models.select_by_cv(ccp),
-        "alpha0": replace(alpha.fits[0], name="alpha0"),
+        "alpha0": models.select_level(alpha, 0.0, "alpha0"),
         "alpha": models.select_by_cv(alpha),
         "oracle": select_oracle(alpha, x_val, y_val, truth),
     }

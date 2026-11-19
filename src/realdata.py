@@ -109,7 +109,7 @@ def run_one(
         "full": models.build(models.FULL, x_train, y_train, config, rep),
         "global": models.build(models.GLOBAL, x_train, y_train, config, rep),
         "ccp": models.build(models.CCP, x_train, y_train, config, rep),
-        "alpha0": models.Fitted("alpha0", alpha.fits[0].model, 0.0, alpha.fits[0].cv_mse),
+        "alpha0": models.select_level(alpha, 0.0, "alpha0"),
         "alpha": models.select_by_cv(alpha),
     }
     rows: list[dict[str, object]] = []
