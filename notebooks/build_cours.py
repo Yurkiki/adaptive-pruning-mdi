@@ -545,9 +545,9 @@ deux cas en découlent :
 > **C'est de là que vient la convention de centrage.** L'annulation $\sum_C \omega_C(\mu_C-\mu_N)=0$
 > est *exacte* en entraînement, mais en validation les poids $\omega'_C$ diffèrent, donc il reste un
 > petit résidu — **multiplié par $\mu_N$**. Si $y$ n'est pas centré, $\mu_N$ est de l'ordre de la
-> moyenne de $y$ et ce résidu explose. Mesuré sur `S1` avec un décalage de $+236$ (des prix en k\$) :
-> masse de bruit $-0{,}02$ en centrant, $+7{,}32$ sans centrer. On soustrait toujours la moyenne
-> d'**entraînement** — jamais celle de validation, qu'on n'a pas le droit de regarder.
+> moyenne de $y$ et ce résidu explose (l'exemple et le contre-exemple sont exécutés plus bas, après
+> la figure). On soustrait toujours la moyenne d'**entraînement** — jamais celle de validation,
+> qu'on n'a pas le droit de regarder.
 
 > **Une déviation à signaler.** Li et al. définissent cette somme sur les points **out-of-bag**
 > d'une forêt — les lignes qu'un arbre n'a pas tirées dans son bootstrap. Un arbre unique n'en a
@@ -590,14 +590,26 @@ d'impureté), on obtient :
 - **coupure réelle** : terme (b) $\to +$ terme (a), donc $\text{UFI} \to 2 \times$ la vraie baisse → **d'où la division par 2** ;
 - **coupure de bruit** : terme (b) $\to -$ terme (a), les deux **s'annulent** → $\text{UFI} \to 0$.
 
-> **Attention, cette convergence suppose des nœuds assez peuplés.** Le terme (b) estime la vraie
-> baisse ; le terme (a), lui, est gonflé par le bruit absorbé dès que le nœud est petit (c'est le
-> biais de la partie 6, qui frappe *aussi* les vraies variables dans les coupures profondes). Mesuré
-> sur `S1`, le rapport (b)/(a) sur les variables de signal vaut **+0,44 sur un arbre complet** et ne
-> monte vers $+1$ qu'en forçant des feuilles larges : +0,74 (feuille ≥ 20), +0,86 (≥ 50), +0,91
-> (≥ 200), **+0,99** (≥ 600). Le rapport $-1$ sur le bruit, lui, se voit immédiatement : $-1{,}20$
-> sur l'arbre complet. Donc la division par 2 est exacte à la limite, approximative en pratique —
-> `ufi_half` sous-estime $I_j$ d'environ 20 % sur un arbre unique.
+**Vérifions les deux prédictions.** Le rapport (b)/(a) devrait valoir $+1$ sur le signal et $-1$
+sur le bruit. Mesuré sur `S1` à $n = 20\,000$ **fixe** (seule la taille minimale de feuille varie),
+moyenne sur 20 répétitions :
+
+| feuille minimale | (b)/(a) sur le **signal** | (b)/(a) sur le **bruit** |
+|---|---|---|
+| $1$ — arbre complet | $+0{,}591$ | $-1{,}111$ |
+| $20$ | $+0{,}852$ | $\mathbf{-0{,}998}$ |
+| $50$ | $+0{,}901$ | *bruit jamais coupé* |
+| $200$ | $+0{,}924$ | *bruit jamais coupé* |
+
+Le $-1$ sur le bruit est touché à $0{,}2\,\%$ près : l'annulation est réelle, pas approximative.
+
+> **Mais le $+1$ sur le signal n'est pas atteint sur un arbre complet** — $+0{,}59$ seulement, et il
+> ne remonte qu'en forçant des feuilles larges. La raison : le terme (b) estime la vraie baisse,
+> alors que le terme (a) est **gonflé par le bruit absorbé** dès que les nœuds sont petits — c'est le
+> biais de la partie 6, qui frappe *aussi* les vraies variables dans les coupures profondes. Donc la
+> division par 2 est exacte à la limite, approximative en pratique : `ufi_half` **sous-estime** $I_j$
+> d'environ 20 % sur un arbre unique complet. C'est visible à l'œil dans la figure de la partie 10,
+> où les points verts tombent sous la diagonale.
 
 > **La division par 2 n'est pas dans l'article.** Zhou & Hooker ne s'en servent que pour *classer*
 > les variables, où une constante multiplicative est invisible. Nous comparons numériquement à
@@ -674,19 +686,59 @@ d'indiscernable de zéro.
 
 Un dernier fait qui n'est dans aucun des deux articles, et qui découle de l'algèbre ci-dessus :
 **l'UFI est insensible au décalage de $y$, le MDI-oob non.** Le MDI-oob porte un facteur $\mu_N$ qui
-grandit avec la moyenne de $y$ ; l'UFI, écrit en différences de carrés, n'en a pas. Mesuré sur `S1`
-**sans** centrer, masse de bruit :
+grandit avec la moyenne de $y$ ; l'UFI, écrit en différences de carrés, n'en a pas.
 
-| décalage de $y$ | `mdi_oob` | `ufi_half` |
-|---|---|---|
-| $0$ | $-0{,}023$ | $-0{,}014$ |
-| $+10$ | $+0{,}245$ | $-0{,}014$ |
-| $+236$ | $\mathbf{+7{,}320}$ | $-0{,}012$ |
+La cellule suivante le met à l'épreuve : le **contre-exemple** (sans centrage) puis l'**exemple**
+(avec centrage), sur le même arbre et les mêmes données, en décalant $y$ de $0$, $+10$ puis $+236$.
+""")
 
-C'est pourquoi on centre toujours : c'est le MDI-oob qui l'exige. (L'UFI bouge quand même d'un
-cheveu, $-0{,}0138 \to -0{,}0117$, parce que le décalage change marginalement les coupures que
-scikit-learn choisit — son critère de scission perd un peu de précision numérique sur de grands
-$y$. Ce n'est pas la mesure qui dérive, c'est l'arbre.)
+co(r"""
+# CONTRE-EXEMPLE puis EXEMPLE. Rien ne change dans le probleme : on ajoute une
+# constante a y, ce qui ne deplace aucune information. Seul le centrage differe.
+print(f"{'décalage de y':>14} {'mdi_oob':>10} {'ufi_half':>10}   {'verdict':>8}")
+print("-" * 50)
+print("  CONTRE-EXEMPLE : y laissé tel quel (non centré)")
+for dec in (0.0, 10.0, 236.0):
+    yy = y_all + dec
+    mauvais = models.grow(X_all[tr], yy[tr], cfg, seed=0)          # pas de centrage
+    a = mdi.model_mdi_oob(mauvais,   X_all[val], yy[val], d)[bruit].sum()
+    b = mdi.model_ufi_half(mauvais,  X_all[val], yy[val], d)[bruit].sum()
+    verdict = "ok" if abs(a) < 0.1 else "CASSÉ"
+    print(f"{dec:>14.0f} {a:>+10.3f} {b:>+10.3f}   {verdict:>8}")
+
+print("\n  EXEMPLE : y centré par la moyenne d'ENTRAÎNEMENT")
+for dec in (0.0, 10.0, 236.0):
+    yy = y_all + dec
+    c_tr = float(yy[tr].mean())                                    # la moyenne d'entrainement
+    bon = models.grow(X_all[tr], yy[tr] - c_tr, cfg, seed=0)
+    a = mdi.model_mdi_oob(bon,   X_all[val], yy[val] - c_tr, d)[bruit].sum()
+    b = mdi.model_ufi_half(bon,  X_all[val], yy[val] - c_tr, d)[bruit].sum()
+    verdict = "ok" if abs(a) < 0.1 else "CASSÉ"
+    print(f"{dec:>14.0f} {a:>+10.3f} {b:>+10.3f}   {verdict:>8}")
+
+print("\nLa vérité est 0 dans les six cas : le décalage n'ajoute aucune information.")
+""")
+
+md(r"""
+**Ce que ça montre.** Ajouter une constante à $y$ ne déplace **aucune information** — la vraie
+importance reste identique, et la bonne réponse pour la masse de bruit reste $0$ dans les six cas.
+Pourtant, sans centrage, le MDI-oob dérive de trois ordres de grandeur entre la première et la
+troisième ligne : il attribue aux cinq variables de bruit une importance massive, uniquement parce
+qu'on a changé l'origine de l'axe des $y$. Avec centrage, les trois lignes restent toutes à $0$ à
+quelques millièmes près.
+
+Notez aussi le **sens** de la dérive : il dépend du signe de $\mu_N$ et de la façon dont les poids
+$\omega'_C$ s'écartent des $\omega_C$, donc il n'est pas prévisible — ce qui est pire qu'un biais
+systématique, qu'on pourrait au moins corriger.
+
+Et la colonne `ufi_half` ne bouge dans aucun des deux blocs : c'est le **contre-exemple du
+contre-exemple**, qui confirme que le problème vient bien du facteur $\mu_N$ propre au MDI-oob, et
+pas d'autre chose dans le dispositif.
+
+> **Pourquoi la moyenne d'entraînement et pas celle de validation ?** Parce que la moyenne de
+> validation est une statistique calculée sur les données qu'on prétend n'avoir jamais vues. S'en
+> servir, même pour un simple recentrage, c'est laisser fuir de l'information du jeu de validation
+> vers la mesure — exactement le biais B qu'on essaie d'éliminer.
 """)
 
 # ---------------------------------------------------------------- 9
@@ -707,6 +759,42 @@ toute la grille.
 
 Ce qui le rend *adaptatif* : le gain d'une coupure grandit comme $|N|$, la pénalité seulement comme
 $\log|N|$. Donc on élague **fort là où les données sont rares**, et peu là où elles sont nombreuses.
+
+### Pourquoi cette section est le cœur du projet
+
+Les parties 1 à 8 sont du contexte. **C'est ici que se joue la question posée.** Trois raisons
+précises :
+
+**1 · L'élagage est littéralement ce que le sujet demande.** La consigne d'Erwan Scornet est
+d'« évaluer la pertinence d'un MDI construit sur des arbres (forêts) **moins profonds** (par exemple
+utilisant la dernière méthode), calculé sur un **jeu de données de validation** ». Les deux clauses
+désignent deux remèdes : « jeu de validation » → la partie 8, « moins profonds » → **cette partie**.
+Et « la dernière méthode » est précisément l'alpha-trimming (Surjanovic, Henrey & Loughin, 2024).
+Sauter cette section, c'est ne répondre qu'à la moitié du sujet.
+
+**2 · Rien ne garantit que ça marche — et c'est ça qui est intéressant.** Les deux remèdes ne sont
+pas symétriques :
+
+| | ce que ça retire | ce que ça coûte |
+|---|---|---|
+| mesurer sur la validation (partie 8) | le bruit absorbé | rien : l'arbre est inchangé |
+| élaguer (cette partie) | le bruit absorbé | **du vrai signal** : un arbre plus court approxime moins bien $f_j$ |
+
+Le théorème 3 de Scornet (2023) dit que le MDI de population converge vers $\text{Var}(f_j(X_j))$
+quand la profondeur $k \to \infty$ : **plus profond est mieux, en théorie**. Le biais qu'on combat
+est un effet d'échantillon fini. Donc élaguer échange un biais contre un autre, et le solde peut
+être négatif.
+
+**3 · La combinaison des deux est la contribution.** Chacun des deux remèdes existe déjà,
+publié séparément. Personne n'a testé ce que donne leur **conjonction**. Deux scénarios possibles,
+et il faut trancher entre eux :
+
+- ils attaquent des défauts **différents** → leurs effets s'additionnent, et pruning + validation bat validation seule ;
+- ils attaquent **le même** défaut (le bruit absorbé par la profondeur) → ce sont des **substituts**, et une fois le second appliqué, le premier ne fait plus que coûter de la résolution.
+
+La figure qui suit prépare le terrain : elle montre qu'un $\alpha$ optimal **existe** pour la
+prédiction. Toute la question est de savoir si celui qui optimise l'**importance** est au même
+endroit — et la partie 12 y répond avec les deux courbes superposées.
 """)
 
 md(r"""
