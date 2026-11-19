@@ -903,29 +903,53 @@ print(f"  vérifiée sur l'échantillon    : {y_all.var():.4f}")
 """)
 
 co(r"""
-fig, ax = plt.subplots(figsize=(6.4, 5.0))
-hi = verite.max()*1.18
-ax.plot([0, hi], [0, hi], color=SOFT, lw=1.2, zorder=2)
-ax.text(hi*.60, hi*.66, "mesure parfaite", fontsize=9, color=SOFT, rotation=41)
-for nom, coul in [("mdi_train", ORANGE), ("mdi_oob", BLEU), ("ufi_half", VERT)]:
-    ax.scatter(verite, mesures[nom], s=85, color=coul, label=nom, zorder=3,
-               edgecolor="white", lw=1.5)
-ax.set_xlabel("vraie importance  $I_j$"); ax.set_ylabel("importance estimée")
-ax.legend(frameon=False); ax.grid()
-ax.set_title("Les points à gauche (x = 0) sont les variables de bruit", fontsize=10.5, color=INK)
+# Une colonne par variable. La barre grise est la VERITE, le point colore ce que
+# la mesure annonce : le trait vertical entre les deux EST l'erreur.
+fig, axes = plt.subplots(1, 3, figsize=(11.0, 3.9), sharey=True)
+pos = np.arange(d)
+etiquettes = [f"s{j+1}" if not bruit[j] else f"b{j-4}" for j in range(d)]
+
+for ax, (nom, coul) in zip(axes, [("mdi_train", ORANGE), ("mdi_oob", BLEU),
+                                  ("ufi_half", VERT)]):
+    ax.axvspan(4.5, d - 0.5, color="#f3f4f7", zorder=0)           # zone de bruit
+    ax.axhline(0, color=INK, lw=1.0, zorder=2)
+    est = mesures[nom]
+    ax.vlines(pos, verite, est, color=coul, lw=1.6, alpha=.55, zorder=3)
+    ax.scatter(pos, verite, marker="_", s=240, color=SOFT, lw=2.4, zorder=4)
+    ax.scatter(pos, est, s=70, color=coul, zorder=5, edgecolor="white", lw=1.4)
+    ax.set_xticks(pos); ax.set_xticklabels(etiquettes, fontsize=8)
+    ax.set_title(nom, fontsize=10, color=INK)
+    ax.grid(axis="y")
+
+axes[0].set_ylabel("importance")
+axes[1].text(7.25, verite.max()*.78, "les 5 variables\nde bruit : vérité = 0",
+             ha="center", fontsize=8.5, color=SOFT)
+axes[0].scatter([], [], marker="_", s=240, color=SOFT, lw=2.4, label="vérité $I_j$")
+axes[0].scatter([], [], s=70, color=INK, label="estimation")
+axes[0].legend(frameon=False, fontsize=8.5, loc="upper right")
+fig.suptitle("Chaque colonne est une variable ; le trait vertical est l'erreur",
+             fontsize=11, color=INK)
 plt.tight_layout(); plt.show()
 """)
 
 md(r"""
-Cette figure résume tout le problème.
+**Comment lire la figure.** Les 10 variables sont alignées en abscisse : `s1`…`s5` portent du
+signal, `b1`…`b5` sont du bruit pur (fond grisé). Pour chacune :
 
-- **À gauche** ($x = 0$, les variables de bruit) : l'orange décolle du zéro, le bleu et le vert y
-  restent collés. C'est le biais, visible à l'œil.
-- **À droite** (les vraies variables) : l'orange suit plutôt bien la diagonale ; le bleu et le vert
-  sont **en dessous** — ils sous-estiment.
+- le **tiret gris** est la vérité $I_j$ — pour les cinq variables de bruit il est posé sur zéro ;
+- le **point coloré** est ce que la mesure annonce ;
+- le **trait vertical** qui les relie **est l'erreur**. Plus il est court, meilleure est la mesure.
 
-Chaque mesure est donc juste là où l'autre se trompe. C'est pourquoi un seul chiffre résumé ne
-suffit jamais à départager.
+Et le verdict se lit en un coup d'œil :
+
+- **dans la zone grisée**, `mdi_train` (orange) flotte nettement au-dessus de zéro : il invente de
+  l'importance. `mdi_oob` et `ufi_half` y ont des traits presque invisibles ;
+- **sur les variables de signal**, c'est l'inverse : les traits orange sont courts, les bleus et
+  verts plus longs et dirigés vers le bas — ils sous-estiment.
+
+Chaque mesure est donc juste là où l'autre se trompe. C'est exactement pourquoi un seul chiffre
+résumé ne suffit jamais à départager, et pourquoi l'analyse garde `noise_mass` et `signal_mass`
+séparés.
 """)
 
 # ---------------------------------------------------------------- 11
