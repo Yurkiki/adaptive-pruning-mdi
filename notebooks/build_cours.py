@@ -118,8 +118,20 @@ print(f"\nmoyenne des prix : {prix.mean():.0f} k$")
 """)
 
 md(r"""
-L'arbre cherche **une question** qui sépare au mieux les prix. Ici, « revenu ≤ 4 ? » coupe le groupe
-en deux moitiés très homogènes.
+L'arbre cherche **une question** qui sépare au mieux les prix. Supposons pour l'instant que
+« revenu ≤ 4 ? » est cette question (on **prouvera** que c'est le bon choix dans la partie 3) —
+voyons ce que donne cette coupure, moyenne par moyenne.
+""")
+
+co(r"""
+# les moyennes sont calculees ici, pas inventees : c'est la preuve que le dessin
+# ci-dessous correspond vraiment aux 6 chiffres du tableau precedent
+m_tout    = prix.mean()
+m_gauche  = prix[:3].mean()   # A, B, C : revenu <= 4
+m_droite  = prix[3:].mean()   # D, E, F : revenu >  4
+print(f"moyenne globale      : {m_tout:.0f} k$")
+print(f"moyenne revenu <= 4  : {m_gauche:.0f} k$  (A, B, C)")
+print(f"moyenne revenu >  4  : {m_droite:.0f} k$  (D, E, F)")
 """)
 
 co(r"""
@@ -131,9 +143,9 @@ def boite(x, y, titre, detail, couleur):
     ax.text(x, y + .08, titre, ha="center", va="center", fontsize=9.5, color=INK, zorder=4)
     ax.text(x, y - .12, detail, ha="center", va="center", fontsize=8.5, color=SOFT, zorder=4)
 
-boite(0, 1.0, "les 6 quartiers", "moyenne = 236 k$", "#f3f4f7")
-boite(-1.6, 0, "revenu ≤ 4", "A, B, C — moyenne 95 k$", "#eaf2fd")
-boite( 1.6, 0, "revenu > 4", "D, E, F — moyenne 377 k$", "#eaf2fd")
+boite(0, 1.0, "les 6 quartiers", f"moyenne = {m_tout:.0f} k$", "#f3f4f7")
+boite(-1.6, 0, "revenu ≤ 4", f"A, B, C — moyenne {m_gauche:.0f} k$", "#eaf2fd")
+boite( 1.6, 0, "revenu > 4", f"D, E, F — moyenne {m_droite:.0f} k$", "#eaf2fd")
 for dx in (-1.6, 1.6):
     ax.plot([0, dx], [0.70, 0.30], color=SOFT, lw=1.1, zorder=1)
 ax.text(-0.95, .56, "oui", fontsize=8.5, color=SOFT)
@@ -427,6 +439,40 @@ for nom in ("mdi_train", "mdi_oob", "ufi_half"):
     print(f"{nom:>26} : {mesures[nom][bruit].sum():+8.3f}")
 """)
 
+md(r"""
+**`mdi.all_measures` n'est pas une boîte noire.** Voici le vrai code de `src/mdi.py`, le même qui
+vient de produire les chiffres ci-dessus — pas une reformulation, la source exacte avec ses
+commentaires d'origine :
+""")
+
+co(r"""
+import inspect
+
+print(inspect.getsource(mdi.mdi_train))
+""")
+
+md(r"""
+`tree.feature[nodes] >= 0` repère les nœuds internes (une feuille a `feature = -2`). `weight` est
+le nombre de lignes d'entraînement par nœud, `impurity` sa variance : `drop` est exactement la
+baisse d'impureté pondérée qu'on calculait à la main en partie 3, pour **chaque** nœud de l'arbre
+en une seule fois. `np.add.at` additionne ce gain dans la case de la variable qui a fait la coupure.
+
+Et la version qui répare le biais — elle ne touche plus à `tree.impurity` du tout, elle **refait
+descendre** `x`, `y` de validation dans l'arbre déjà construit :
+""")
+
+co(r"""
+print(inspect.getsource(mdi.mdi_oob))
+""")
+
+md(r"""
+`descend(tree, x)` fait avancer chaque ligne de validation d'un cran dans l'arbre (c'est la fonction
+qui a servi à `predict` depuis le début). À chaque cran, `mean[child] - mean[parent]` est l'écart
+entre les deux moyennes **d'entraînement**, et on le multiplie par le vrai `y` de validation — jamais
+vu par l'arbre. C'est tout l'algorithme de Li et al. : rien de plus qu'une multiplication accumulée
+pendant la descente.
+""")
+
 co(r"""
 fig, ax = plt.subplots(figsize=(7.6, 3.6))
 noms = ["mdi_train\n(classique)", "mdi_oob\n(validation)", "ufi_half\n(validation)"]
@@ -479,9 +525,43 @@ Ce qui le rend *adaptatif* : le gain d'une coupure grandit comme $|N|$, la péna
 $\log|N|$. Donc on élague **fort là où les données sont rares**, et peu là où elles sont nombreuses.
 """)
 
+md(r"""
+**Le vrai code**, encore une fois — l'algorithme 1 du papier Surjanovic–Henrey–Loughin, transcrit
+dans `src/prune.py` avec ses commentaires :
+""")
+
 co(r"""
 import prune
 
+print(inspect.getsource(prune.alpha_trim))
+""")
+
+md(r"""
+Les points qui comptent pour suivre le code :
+
+- `for node in range(n_nodes - 1, -1, -1)` : on part des **feuilles** et on remonte — on ne peut
+  décider de fusionner un nœud qu'une fois que ses deux enfants sont déjà tranchés.
+- `_information(...)` calcule l'équation (4) de l'article : à variance égale, un nœud dont les
+  points sont loin de la moyenne (`sum_squares` grand) a une information faible — moins
+  d'évidence qu'il faut deux moyennes plutôt qu'une.
+- `merge = parent_information + alpha * root_penalty <= ...` est l'inégalité (5) — la seule
+  décision de tout l'algorithme : garder la coupure ou la dissoudre.
+- la boucle `while stack` à la fin corrige un cas que l'article ne traite pas explicitement : un
+  nœud peut survivre à cette comparaison alors que **son parent** vient d'être fusionné plus haut —
+  il faut alors le détacher aussi, sinon il reste compté bien qu'inatteignable depuis la racine.
+""")
+
+md(r"""
+Reste à définir **« erreur de prédiction »**, affichée plus bas : pour chaque maison de validation,
+l'écart entre la prédiction et le vrai prix, mis au carré (pour que les écarts positifs et négatifs
+ne s'annulent pas), moyenné sur toutes les maisons. C'est le **MSE** (*mean squared error*) :
+
+$$\text{MSE} = \text{moyenne}\big((\hat{y}_i - y_i)^2\big)$$
+
+Plus il est petit, mieux l'arbre prédit sur des données qu'il n'a jamais vues pour grandir.
+""")
+
+co(r"""
 base = models.grow(X_tr, y_tr, cfg, seed=0, min_samples_leaf=5)
 grille = (0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0)
 
@@ -518,8 +598,9 @@ plt.tight_layout(); plt.show()
 """)
 
 md(r"""
-L'erreur descend puis remonte : il existe une quantité d'élagage optimale. **Trop d'arbre** apprend
-le bruit, **trop peu** rate le signal.
+L'erreur descend puis remonte : il existe une quantité d'élagage optimale. **Pas assez d'élagage**
+(alpha trop petit) laisse l'arbre apprendre le bruit ; **trop d'élagage** (alpha trop grand) lui
+fait perdre du vrai signal.
 
 Et c'est exactement la question du projet : **ce réglage optimal pour *prédire* est-il aussi le bon
 pour *mesurer l'importance* ?** Rien ne l'impose.
@@ -666,6 +747,14 @@ md(r"""
 
 Montrons la question centrale directement : parcourons **tous** les niveaux d'élagage et traçons,
 côte à côte, l'erreur de **prédiction** et l'erreur d'**importance**.
+
+**L'erreur d'importance** se définit comme le MSE de la partie précédente, mais sur les $d$
+importances plutôt que sur les prix : l'écart entre l'importance estimée et la vraie $I_j$, au
+carré, additionné sur les $d$ variables :
+
+$$\text{erreur d'importance} = \sum_{j=1}^{d} \big(\widehat{I_j} - I_j\big)^2$$
+
+Rien n'impose que le même $\alpha$ minimise les deux erreurs à la fois.
 """)
 
 co(r"""
