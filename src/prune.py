@@ -127,7 +127,6 @@ def alpha_trim(tree: TreeView, alpha: float) -> TreeView:
             stack.append(int(children_left[node]))
             stack.append(int(children_right[node]))
     orphaned = ~reachable
-    feature = feature.copy()
     feature[orphaned] = -2
     children_left[orphaned] = -1
     children_right[orphaned] = -1
