@@ -347,7 +347,24 @@ from "OOB chose badly" answers the first.
 selector almost never finds it.** This overturns how findings 5 and 6 were
 stated. [SHL24] proposition 3.3 says the right amount of pruning is a function of
 the signal-to-noise ratio, with low SNR favouring more of it; every run behind
-findings 5 and 6 sat at SNR 4. Sweeping it, single tree, `mdi_oob`, 40
+findings 5 and 6 sat at SNR 4.
+
+> **Their proposition is about prediction, not importance.** "Importance" appears
+> once in [SHL24], in a bibliography entry. What is new here is that the same
+> effect shows up on the importance error -- weaker, and only past `sigma^2 ~ 4`.
+> Best available pruning, 25 repetitions:
+>
+> | scenario | `sigma^2` | gain, prediction | gain, importance |
+> |---|---|---|---|
+> | S1 `snr=4` | 0.27 | -11.6% | -1.1% |
+> | S1 `snr=1` | 1.08 | -25.7% | -1.0% |
+> | S1 `snr=0.25` | 4.33 | -33.6% | -20.4% |
+> | DS4 `snr=0.25` | 39.68 | -42.2% | -30.0% |
+>
+> The two optimal alphas also **converge** as noise takes over: 1.25 against 0.50
+> at SNR 4, both 1.50 on DS4. When noise dominates, predicting well and measuring
+> well ask for the same thing -- strip the absorbed noise. That is why CV finds a
+> usable alpha in that regime and nowhere else. Sweeping it, single tree, `mdi_oob`, 40
 repetitions, against `alpha = 0`:
 
 | scenario | `d` | noise share | `sigma^2` | honest oracle | alpha by CV |

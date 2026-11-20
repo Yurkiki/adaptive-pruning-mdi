@@ -1249,7 +1249,28 @@ $\alpha = 0$, arbre unique, 40 répétitions :
 
 **Le gain est réel.** À bas SNR, le meilleur élagage réduit l'erreur de 15 à 43 %. Et il le fait
 aussi sur `S1` ($d = 10$, 50 % de bruit) : ce n'est donc pas la dimension ni la parcimonie qui
-commandent, c'est le **niveau de bruit**. La proposition 3.3 de SHL24 est vérifiée.
+commandent, c'est le **niveau de bruit**.
+
+> **Attention à ce que dit exactement SHL24.** Leur proposition 3.3 porte sur l'**erreur de
+> prédiction**, jamais sur l'importance — le mot n'apparaît pas une seule fois dans leur article
+> en dehors de la bibliographie. Ce qu'on vérifie ici, c'est que **le même effet existe aussi sur
+> l'importance**, ce qu'ils n'ont ni affirmé ni testé. Mais il est plus faible et apparaît plus
+> tard. Meilleur élagage possible, 25 répétitions :
+>
+> | scénario | $\sigma^2$ | gain en **prédiction** | gain en **importance** |
+> |---|---|---|---|
+> | `S1`, SNR $= 4$ | $0{,}27$ | $-11{,}6\,\%$ | $-1{,}1\,\%$ |
+> | `S1`, SNR $= 1$ | $1{,}08$ | $-25{,}7\,\%$ | $-1{,}0\,\%$ |
+> | `S1`, SNR $= 0{,}25$ | $4{,}33$ | $-33{,}6\,\%$ | $-20{,}4\,\%$ |
+> | `DS4`, SNR $= 0{,}25$ | $39{,}68$ | $-42{,}2\,\%$ | $-30{,}0\,\%$ |
+>
+> À SNR $4$ et $1$, l'élagage fait déjà gagner 12 à 26 % en prédiction pour **1 %** en importance.
+> Les deux objectifs ne deviennent comparables qu'à partir de $\sigma^2 \approx 4$.
+>
+> Et les deux $\alpha$ optimaux **se rapprochent** quand le bruit domine : $1{,}25$ contre $0{,}50$
+> à SNR $4$, mais $1{,}50$ contre $1{,}50$ sur `DS4`. Logique — quand le bruit écrase tout, les
+> deux objectifs demandent la même chose : retirer le bruit absorbé. C'est pourquoi la validation
+> croisée ne trouve le bon réglage que dans ce régime-là.
 
 > **Mais ce gain ne vient pas de l'alpha-trimming.** En donnant son meilleur niveau à chacune des
 > deux méthodes, l'élagage adaptatif ne bat jamais une simple taille de feuille minimale — et il
