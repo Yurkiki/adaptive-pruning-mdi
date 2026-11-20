@@ -1019,28 +1019,6 @@ Les cinq suivants viennent de **Duroux & Scornet (2016)**, section 4. Ils couvre
 que le biais devrait frapper le plus fort — plus il y a de colonnes candidates, plus l'arbre a
 d'occasions de tomber par chance sur une coupure de bruit qui « marche ».
 
-> **Plus le rapport signal/bruit est faible, plus l'élagage paie.** C'est la
-> proposition 3.3 de Surjanovic, Henrey & Loughin (2024) : le bon niveau d'élagage est une
-> **fonction du SNR**, et c'est à bas SNR qu'il est le plus payant. L'intuition tient en une
-> phrase — plus il y a de bruit, plus un arbre profond en absorbe, plus il y a à gagner à le
-> raccourcir.
->
-> C'est **exactement ce qu'on observe**, et ça a renversé notre conclusion. Erreur
-> d'importance de `mdi_oob` face à $\alpha = 0$, 40 répétitions, le meilleur élagage possible :
->
-> | scénario | $\sigma^2$ | gain |
-> |---|---|---|
-> | `S1`, SNR $= 4$ | $0{,}27$ | $+4{,}2\,\%$ (nuit) |
-> | `DS4`, SNR $= 4$ | $2{,}48$ | $-2{,}0\,\%$ |
-> | `S1`, SNR $= 0{,}25$ | $4{,}33$ | $\mathbf{-17{,}0\,\%}$ |
-> | `DS3`, SNR $= 0{,}25$ | $5{,}80$ | $\mathbf{-15{,}5\,\%}$ |
-> | `DS4`, SNR $= 0{,}25$ | $\mathbf{39{,}68}$ | $\mathbf{-42{,}5\,\%}$ |
->
-> Le classement suit le bruit, pas la dimension : `S1` ($d = 10$) à bas SNR bat `DS4`
-> ($d = 100$) à SNR élevé. **Tester uniquement à SNR $= 4$ aurait produit un résultat négatif
-> sans valeur** — on aurait évalué la méthode hors des conditions où ses auteurs l'annoncent
-> efficace. La partie 12 dit ce qu'il reste du résultat une fois cette condition respectée.
-
 > **Trois des huit modèles du papier sont inutilisables ici.** Les modèles 2, 5 et 7 contiennent
 > des produits ($\tilde{X}_1\tilde{X}_2$) et des indicatrices à plusieurs variables. Dans ces cas,
 > $\mathrm{Var}(f_j(X_j))$ n'est la MDI de population d'**aucun** arbre — il n'y a donc pas de
