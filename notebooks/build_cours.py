@@ -752,37 +752,45 @@ La cellule suivante le met à l'épreuve : le **contre-exemple** (sans centrage)
 """)
 
 co(r"""
-# CONTRE-EXEMPLE puis EXEMPLE. Rien ne change dans le probleme : on ajoute une
-# constante a y, ce qui ne deplace aucune information. Seul le centrage differe.
-print(f"{'décalage de y':>14} {'mdi_oob':>10} {'ufi_half':>10}   {'verdict':>8}")
-print("-" * 50)
-print("  CONTRE-EXEMPLE : y laissé tel quel (non centré)")
+# On ajoute une constante a y, ce qui ne deplace AUCUNE information.
+# A gauche sans centrage (le contre-exemple), a droite avec (l exemple).
+print("importance attribuée aux 5 variables de bruit — la VÉRITÉ est 0 partout")
+print()
+print(f"{'':>14} {'SANS centrage':>22}  |{'AVEC centrage':>23}")
+print(f"{'décalage de y':>14} {'mdi_oob':>11} {'ufi_half':>10}  |{'mdi_oob':>12} {'ufi_half':>10}")
+print("-" * 62)
+
 for dec in (0.0, 10.0, 236.0):
     yy = y_all + dec
-    mauvais = models.grow(X_all[tr], yy[tr], cfg, seed=0)          # pas de centrage
-    a = mdi.model_mdi_oob(mauvais,   X_all[val], yy[val], d)[bruit].sum()
-    b = mdi.model_ufi_half(mauvais,  X_all[val], yy[val], d)[bruit].sum()
-    verdict = "ok" if abs(a) < 0.1 else "CASSÉ"
-    print(f"{dec:>14.0f} {a:>+10.3f} {b:>+10.3f}   {verdict:>8}")
 
-print("\n  EXEMPLE : y centré par la moyenne d'ENTRAÎNEMENT")
-for dec in (0.0, 10.0, 236.0):
-    yy = y_all + dec
-    c_tr = float(yy[tr].mean())                                    # la moyenne d'entrainement
-    bon = models.grow(X_all[tr], yy[tr] - c_tr, cfg, seed=0)
-    a = mdi.model_mdi_oob(bon,   X_all[val], yy[val] - c_tr, d)[bruit].sum()
-    b = mdi.model_ufi_half(bon,  X_all[val], yy[val] - c_tr, d)[bruit].sum()
-    verdict = "ok" if abs(a) < 0.1 else "CASSÉ"
-    print(f"{dec:>14.0f} {a:>+10.3f} {b:>+10.3f}   {verdict:>8}")
+    brut = models.grow(X_all[tr], yy[tr], cfg, seed=0)                    # pas de centrage
+    a0 = mdi.model_mdi_oob(brut,  X_all[val], yy[val], d)[bruit].sum()
+    b0 = mdi.model_ufi_half(brut, X_all[val], yy[val], d)[bruit].sum()
 
-print("\nLa vérité est 0 dans les six cas : le décalage n'ajoute aucune information.")
+    c_tr = float(yy[tr].mean())                                           # moyenne d'ENTRAÎNEMENT
+    net = models.grow(X_all[tr], yy[tr] - c_tr, cfg, seed=0)
+    a1 = mdi.model_mdi_oob(net,  X_all[val], yy[val] - c_tr, d)[bruit].sum()
+    b1 = mdi.model_ufi_half(net, X_all[val], yy[val] - c_tr, d)[bruit].sum()
+
+    print(f"{dec:>+14.0f} {a0:>11.3f} {b0:>10.3f}  |{a1:>12.3f} {b1:>10.3f}")
+
+print()
+print("  seule mdi_oob SANS centrage dérive (-0.02 -> -13.8)  <- le centrage est indispensable")
+print("  ufi_half tient sans centrage : sa formule ne multiplie jamais par y seul")
 """)
 
 md(r"""
-**Ce que ça montre.** Décaler $y$ n'ajoute **aucune information** : la bonne réponse reste $0$ dans
-les six cas. Sans centrage, le MDI-oob dérive quand même de trois ordres de grandeur et déclare les
-variables de bruit massivement importantes. `ufi_half`, lui, ne bouge dans aucun des deux blocs —
-ce qui confirme que le coupable est bien le facteur $\mu_N$ propre au MDI-oob.
+**Comment lire le tableau.** Les quatre colonnes de chiffres sont la **même mesure**, dans quatre
+conditions. Chaque case devrait valoir $0$ : décaler $y$ ne déplace aucune information, donc la
+vraie importance des cinq variables de bruit reste nulle dans les douze cas.
+
+Une seule colonne dérive : **`mdi_oob` sans centrage**, qui passe de $-0{,}02$ à $-13{,}8$. Elle
+déclare les variables de bruit massivement importantes, uniquement parce qu'on a changé l'origine
+de l'axe des $y$.
+
+Les trois autres tiennent — et c'est la comparaison qui identifie le coupable. Si le problème
+venait de l'arbre ou du découpage, **toutes** les colonnes dériveraient. Seule celle qui multiplie
+par $y_i$ le fait : c'est bien le facteur $\mu_N$ propre au MDI-oob.
 
 > **Et pourquoi la moyenne d'entraînement ?** Parce que celle de validation est calculée sur des
 > données qu'on prétend n'avoir jamais vues : s'en servir, même pour recentrer, ferait fuir de
