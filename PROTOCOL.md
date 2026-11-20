@@ -217,7 +217,7 @@ Remaining, in order:
 | 3 | **A finer alpha grid** `{0, 0.1, ..., 3.0}` for final numbers (`ModelConfig.alpha_grid`) | runs use an 11-point grid for speed |
 | 4 | **Reproduce one [SHL24] benchmark** | independent check that our transcription of Algorithm 1 is faithful |
 | 5 | **Run the DS models through the full paired protocol** | they are in `simulate.py` and used in the ad-hoc runs below, but no HEADLINE comparison table covers them yet |
-| 6 | **Find a selection rule aimed at importance, not prediction** | finding 8 shows the gain exists and that CV on prediction error misses it in four regimes out of five |
+| 6 | **Find a selection rule aimed at importance, not prediction** | finding 8 shows the gain exists and that CV on prediction error misses it in four of five regimes. Fouodo, Kronziel, Konig & Szymczak, *Effect of hyperparameters on variable selection in random forests* ([arXiv:2309.06943](https://arxiv.org/abs/2309.06943), 2023) establish that the hyperparameters best for variable selection are not those best for prediction, and close by stating the rule itself is open: *"It is currently unclear how to select the optimal hyperparameter values for analyzing a specific dataset."* None of [S20], [ZH21] or [SHL24] proposes one either |
 
 ## Simulated data only, for now
 

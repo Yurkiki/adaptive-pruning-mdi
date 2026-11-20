@@ -1495,9 +1495,44 @@ ne peut minimiser que l'erreur de prédiction. **Toute la question est de savoir
 écart** — et c'est exactement ce que les bras `oracle` de la partie 11 doivent chiffrer, puisqu'ils
 choisissent $\alpha'$ en trichant et bornent ainsi ce que l'élagage pourrait donner au mieux.
 
-Si l'écart est important, la conclusion ne sera pas « l'élagage ne sert à rien » mais **« il
-faudrait un critère de sélection pensé pour l'importance, et il n'en existe pas »** — ce qui est
-une contribution à part entière.
+### L'échange est très inégal
+
+On pourrait croire qu'un $\alpha$ bon pour l'importance l'est aussi pour la prédiction — après tout,
+mieux mesurer les vraies variables devrait aider à prédire. Les chiffres disent le contraire, et de
+façon asymétrique :
+
+| on choisit | on perd en prédiction | on perd en importance |
+|---|---|---|
+| $\alpha'$ (importance) | $+13{,}0\,\%$ | — |
+| $\alpha^{\star}$ (prédiction) | — | $\mathbf{+64{,}8\,\%}$ |
+
+**La raison : les deux objectifs ne pondèrent pas les variables de la même façon.** L'erreur de
+prédiction est dominée par les gros signaux — perdre `signal 5`, qui ne porte que 15 % de la
+variance explicable, coûte presque rien. L'erreur d'importance, elle, somme
+$\sum_j (\hat{I_j} - I_j)^2$ **à poids égal sur les dix variables** : à $\alpha^{\star}$, cette
+seule variable concentre $0{,}018$ des $0{,}031$ d'erreur totale, soit **59 %**.
+
+Un élagage sévère sacrifie donc les signaux faibles. C'est indolore pour prédire, et ruineux pour
+mesurer.
+
+### Existe-t-il déjà un critère pour ça ?
+
+**L'observation est connue**, il faut le dire : Fouodo, Kronziel, König & Szymczak (2023), *Effect
+of hyperparameters on variable selection in random forests*, montrent que les hyperparamètres
+optimaux pour la sélection de variables ne sont pas ceux qui optimisent la prédiction.
+
+**Mais ils s'arrêtent là**, et le disent explicitement :
+
+> *« One important open question remains after this study. It is currently unclear **how to select
+> the optimal hyperparameter values** for analyzing a specific dataset. »*
+
+Ils mesurent l'effet, ils ne proposent pas de règle. Et ni Scornet (2023), ni Zhou & Hooker (2021),
+ni Surjanovic et al. (2024) n'en proposent non plus — le dernier sélectionne explicitement par
+validation croisée sur l'erreur de prédiction.
+
+Donc si l'écart se confirme, la conclusion ne sera pas « l'élagage ne sert à rien » mais **« il
+faudrait un critère de sélection pensé pour l'importance, et la question est ouverte dans la
+littérature »** — ce qui est une contribution à part entière, et une piste concrète pour la suite.
 """)
 
 nb["cells"] = C
