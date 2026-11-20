@@ -1452,23 +1452,41 @@ fig.suptitle("Les trois mesures veulent moins d'élagage que la prédiction",
 plt.tight_layout(); plt.show()
 """)
     md(r"""
-**Les trois mesures s'accordent sur une chose : il faut élaguer moins que pour prédire.**
+### Le pari est perdant d'avance
 
-| | $\alpha'$ | ce que la mesure corrige déjà |
-|---|---|---|
-| `mdi_train` | $0{,}75$ | rien — c'est elle qui a besoin du plus d'élagage |
-| `mdi_oob` | $0{,}50$ | le biais hors-échantillon |
-| `ufi_half` | $0{,}25$ | idem, et elle en a besoin encore moins |
-| **prédiction** | $\mathbf{1{,}25}$ | — |
+Reprenons le tableau en ne gardant que ce qui décide : ce qu'on peut gagner en élaguant au mieux,
+et ce qu'on perd au réglage que la validation croisée choisit réellement.
 
-L'ordre n'est pas un hasard : **plus la mesure corrige déjà le biais, moins elle réclame
-d'élagage**. C'est la thèse des substituts, lisible en une colonne — l'élagage et la mesure
-hors-échantillon retirent la même chose, donc celle qui a déjà retiré n'a plus besoin de l'autre.
+| mesure | à $\alpha = 0$ | au mieux | **gain maximal** | à $\alpha^{\star} = 1{,}25$ | **perte réelle** |
+|---|---|---|---|---|---|
+| `mdi_train` | $0{,}01697$ | $0{,}01637$ | $-3{,}5\,\%$ | $0{,}02298$ | $\mathbf{+35\,\%}$ |
+| `mdi_oob` | $0{,}01879$ | $0{,}01858$ | $-1{,}1\,\%$ | $0{,}03061$ | $\mathbf{+63\,\%}$ |
+| `ufi_half` | $0{,}01577$ | $0{,}01575$ | $-0{,}1\,\%$ | $0{,}02755$ | $\mathbf{+75\,\%}$ |
 
-**Et l'échange est très inégal.** Choisir $\alpha'$ coûte **13 %** de prédiction ; choisir
-$\alpha^{\star}$ coûte **65 %** de précision d'importance.
+**Le meilleur élagage possible ne rapporte presque rien** — $0{,}1$ à $3{,}5\,\%$, et encore
+faut-il connaître $I_j$ pour le trouver. La colonne de gauche du tableau est quasi plate entre
+$\alpha = 0$ et $\alpha'$.
 
-La raison : l'erreur de prédiction est dominée par les gros signaux, alors que l'erreur
+**Le réglage réel coûte 35 à 75 %.** Et ce n'est pas un réglage absurde : c'est exactement
+l'optimum de prédiction, celui que la validation croisée est faite pour trouver.
+
+> **La réponse tient en une phrase : il n'y a pas lieu d'élaguer pour mesurer l'importance.** On
+> risque $35$ à $75\,\%$ pour gagner au mieux $1\,\%$. Et contrairement au protocole complet, ça se
+> lit ici sur **une seule grille et un seul scénario**.
+
+### Deux détails qui expliquent pourquoi
+
+**L'ordre des $\alpha'$ n'est pas un hasard** : $0{,}75$ pour `mdi_train`, $0{,}50$ pour
+`mdi_oob`, $0{,}25$ pour `ufi_half`. Plus une mesure corrige déjà le biais de profondeur, moins
+elle réclame d'élagage — l'élagage et la mesure hors-échantillon retirent **la même chose**, donc
+celle qui a déjà retiré n'a plus besoin de l'autre. C'est la thèse des substituts, lisible en une
+colonne.
+
+**Et `ufi_half` est le cas limite** : gain le plus faible ($0{,}1\,\%$) et perte la plus forte
+($75\,\%$). Cohérent — c'est elle qui corrige le mieux, donc il ne lui reste rien à gagner, mais
+elle paie quand même le prix de l'élagage en résolution perdue.
+
+La raison de fond : l'erreur de prédiction est dominée par les gros signaux, alors que l'erreur
 d'importance somme $\sum_j (\hat{I_j} - I_j)^2$ **à poids égal sur les dix variables**. Un élagage
 sévère sacrifie les signaux faibles — indolore pour prédire, ruineux pour mesurer.
 
