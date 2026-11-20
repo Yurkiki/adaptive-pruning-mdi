@@ -422,8 +422,8 @@ md(r"""
 L'identité est vérifiée à la précision machine. **Ce n'est pas un défaut d'implémentation de
 scikit-learn, c'est une propriété mathématique de la mesure elle-même.**
 
-C'est le résultat central de Scornet (2023), qui en tire une consigne sans détour : *il ne faut
-jamais calculer le MDI sur un arbre entièrement développé*.
+C'est le résultat central de Scornet (2023), dont la conclusion est sans détour : *le MDI ne doit
+jamais être calculé sur un arbre entièrement développé*.
 """)
 
 # ---------------------------------------------------------------- 7
@@ -821,10 +821,9 @@ $\log|N|$. Donc on élague **fort là où les données sont rares**, et peu là 
 Les parties 1 à 8 sont du contexte. **C'est ici que se joue la question posée**, pour trois
 raisons :
 
-**1 · C'est la moitié du sujet.** La consigne de Scornet demande un MDI « sur des arbres **moins
-profonds** (par exemple utilisant la dernière méthode), calculé sur un **jeu de données de
-validation** ». Deux clauses, deux remèdes : la validation (partie 8) et l'élagage (ici), « la
-dernière méthode » désignant l'alpha-trimming.
+**1 · C'est la moitié du sujet.** La question posée porte sur un MDI calculé à la fois sur des
+arbres **moins profonds** et sur un **jeu de validation**. Deux clauses, deux remèdes : la
+validation (partie 8) et l'élagage (ici), par alpha-trimming.
 
 **2 · Rien ne garantit que ça marche.** Les deux remèdes ne coûtent pas la même chose : mesurer sur
 la validation laisse l'arbre intact, alors qu'élaguer **détruit du vrai signal** — le théorème 3 de
@@ -972,10 +971,10 @@ donc $I_j = 0$ **exactement** : ce sont nos pièges.
 Que ce soit la bonne cible est un théorème de Scornet (2023), valable quand le modèle est additif
 et les variables indépendantes.
 
-> **Pourquoi pas des données réelles ?** Parce qu'on ne pourrait rien conclure. Scornet est
-> explicite : *« données simulées pour le moment : comme la véritable importance sur les jeux de
-> données réelles est inconnue, il sera plus difficile de commenter les résultats. »* Le code pour
-> les données réelles existe (`src/realdata.py`) mais reste en attente.
+> **Pourquoi pas des données réelles ?** Parce qu'on ne pourrait rien conclure : la véritable
+> importance y est inconnue, donc aucun écart ne serait interprétable. Le code existe
+> (`src/realdata.py`) mais reste hors périmètre tant que le tableau sur données simulées n'est pas
+> établi.
 
 ### Les scénarios disponibles
 
@@ -987,8 +986,8 @@ Deux familles, toutes additives à variables indépendantes — la seule situati
 | `S4` | idem, mais les importances couvrent deux ordres de grandeur | 10 | 5 |
 | `DS1`, `DS3`, `DS4`, `DS6`, `DS8` | **Duroux & Scornet (2016)**, section 4 | 30 à 1000 | 2 à 10 |
 
-Les modèles Duroux–Scornet sont ceux que Scornet nous a indiqués. Ils sont plus larges et plus
-parcimonieux : `DS8` a 1000 variables dont **4** portent du signal.
+Les modèles Duroux–Scornet sont plus larges et plus parcimonieux que les nôtres : `DS8` a 1000
+variables dont **4** seulement portent du signal, soit deux fois plus de colonnes que de lignes.
 
 > **Trois des huit modèles du papier sont inutilisables ici.** Les modèles 2, 5 et 7 contiennent
 > des produits ($\tilde{X}_1\tilde{X}_2$) et des indicatrices à plusieurs variables. Dans ces cas,
