@@ -700,14 +700,14 @@ personne ne recommande. Refaisons la mesure en tronquant progressivement.
 
 co(r"""
 # meme protocole, en faisant varier la taille minimale des feuilles.
-# On garde la masse de bruit : la verite vaut 0 pour chaque ligne du tableau.
-tailles = (1, 5, 20, 50, 100)
-masse = {k: [] for k in mdi.MEASURES}
+# On suit le BRUIT (cible 0) et le SIGNAL (cible sum I_j), pour les deux mesures.
+tailles = (1, 5, 20, 50, 100, 200)
 feuilles_msl = []
+suivi = {m: {"bruit": [], "signal": []} for m in ("mdi_train", "mdi_oob")}
 
 for msl in tailles:
-    par_rep = {k: [] for k in mdi.MEASURES}
-    nb = []
+    nb_ = []
+    acc = {m: {"bruit": [], "signal": []} for m in suivi}
     for rep in range(30):
         g = np.random.default_rng(rep)
         Xa, ya = simulate.sample(scenario, 1500, g)
@@ -715,54 +715,71 @@ for msl in tailles:
         v_r, t_r = ordre_r[:500], ordre_r[500:]
         ctr = float(ya[t_r].mean())
         mod = models.grow(Xa[t_r], ya[t_r] - ctr, cfg, seed=rep, min_samples_leaf=msl)
-        nb.append(mod.mean_leaves)
-        for k, val_ in mdi.all_measures(mod, Xa[v_r], ya[v_r] - ctr, d).items():
-            par_rep[k].append(val_[bruit].sum())
-    feuilles_msl.append(np.mean(nb))
-    for k in mdi.MEASURES:
-        masse[k].append(np.mean(par_rep[k]))
+        nb_.append(mod.mean_leaves)
+        mesures_msl = mdi.all_measures(mod, Xa[v_r], ya[v_r] - ctr, d)
+        for m in suivi:
+            acc[m]["bruit"].append(mesures_msl[m][bruit].sum())
+            acc[m]["signal"].append(mesures_msl[m][~bruit].sum())
+    feuilles_msl.append(np.mean(nb_))
+    for m in suivi:
+        for q in ("bruit", "signal"):
+            suivi[m][q].append(np.mean(acc[m][q]))
 
-print("importance attribuée aux 5 variables de bruit — la vérité est 0")
-print(f"{'feuilles':>10} {'mdi_train':>11} {'mdi_oob':>10} {'ufi_half':>10}")
-for i_, msl in enumerate(tailles):
-    print(f"{feuilles_msl[i_]:>10.0f} "
-          + " ".join(f"{masse[k][i_]:>+10.4f}" for k in mdi.MEASURES))
+print(f"{'feuilles':>9} | {'BRUIT (cible 0)':>24} | {'SIGNAL (cible %.2f)' % verite.sum():>24}")
+print(f"{'':>9} | {'mdi_train':>11} {'mdi_oob':>12} | {'mdi_train':>11} {'mdi_oob':>12}")
+print("-" * 66)
+for i_m in range(len(tailles)):
+    print(f"{feuilles_msl[i_m]:>9.0f} | {suivi['mdi_train']['bruit'][i_m]:>+11.3f} "
+          f"{suivi['mdi_oob']['bruit'][i_m]:>+12.3f} | "
+          f"{suivi['mdi_train']['signal'][i_m]:>11.3f} {suivi['mdi_oob']['signal'][i_m]:>12.3f}")
 """)
 
 co(r"""
-fig, ax = plt.subplots(figsize=(8.0, 4.2))
+fig, (g_, d_) = plt.subplots(1, 2, figsize=(10.4, 4.0))
 
-ax.axhspan(-0.012, 0.012, color="#f2f2ef", zorder=0)
-ax.axhline(0, color=INK, lw=1.8, ls=(0, (6, 3)), zorder=2)
-ax.text(feuilles_msl[0]*0.78, 0.016, "la vérité : 0", fontsize=9.5, color=INK)
+for ax, quoi, cible, titre in (
+    (g_, "bruit", 0.0, "Le bruit : à ramener à 0"),
+    (d_, "signal", float(verite.sum()), f"Le signal : à ramener à {verite.sum():.2f}"),
+):
+    ax.axhline(cible, color=INK, lw=1.4, ls=(0, (6, 3)), zorder=2, label="la cible")
+    for m, coul in (("mdi_train", ORANGE), ("mdi_oob", BLEU)):
+        ax.plot(feuilles_msl, suivi[m][quoi], marker="o", ms=6.5, lw=2.1, color=coul,
+                mec="white", mew=1.4, label=m, zorder=3)
+    ax.set_xscale("log")
+    ax.set_xticks(feuilles_msl)
+    ax.set_xticklabels([f"{v:.0f}" for v in feuilles_msl], fontsize=8.5)
+    ax.set_xlabel("feuilles de l'arbre   (log)", fontsize=9)
+    ax.set_title(titre, fontsize=10, color=INK)
+    ax.grid(axis="y")
 
-for nom, coul in (("mdi_train", ORANGE), ("mdi_oob", BLEU), ("ufi_half", VERT)):
-    ax.plot(feuilles_msl, masse[nom], marker="o", ms=7, lw=2.0, color=coul,
-            mec="white", mew=1.5, label=nom, zorder=3)
-
-ax.annotate("arbre complet\n(1 point par feuille)",
-            (feuilles_msl[0], masse["mdi_train"][0]),
-            textcoords="offset points", xytext=(18, -6), fontsize=9, color=ORANGE)
-ax.annotate("dès 15 feuilles,\nles trois se rejoignent",
-            (feuilles_msl[-2], 0.0), textcoords="offset points", xytext=(-30, 42),
-            fontsize=9, color=SOFT,
+g_.set_ylabel("importance attribuée")
+g_.legend(frameon=False, fontsize=9, loc="upper left")
+d_.annotate("élaguer à fond :\nle signal part aussi",
+            (feuilles_msl[-1], suivi["mdi_oob"]["signal"][-1]),
+            textcoords="offset points", xytext=(28, -8), fontsize=8.5, color=SOFT,
             arrowprops=dict(arrowstyle="->", color=SOFT, lw=1.1))
 
-ax.set_xscale("log")
-ax.set_xticks(feuilles_msl)
-ax.set_xticklabels([f"{v:.0f}" for v in feuilles_msl])
-ax.set_xlabel("nombre de feuilles de l'arbre   (échelle log)")
-ax.set_ylabel("importance donnée au bruit")
-ax.legend(frameon=False, loc="upper left")
-ax.grid(axis="y")
-ax.set_title("Tronquer l'arbre suffit à faire disparaître le biais", fontsize=11, color=INK)
+fig.suptitle("Tronquer efface le biais sur le bruit — et emporte le signal avec",
+             fontsize=11, color=INK)
 plt.tight_layout(); plt.show()
 """)
 
 md(r"""
-**L'écart se referme.** Sur l'arbre complet, `mdi_train` fabrique $0{,}18$ d'importance et les
-mesures hors-échantillon sont à zéro — un facteur 50. Dès 50 lignes par feuille, les trois
-affichent $\pm 0{,}001$ : **plus aucune différence**.
+**Le panneau de gauche** est le bug de la partie 5 : `mdi_train` grimpe à $0{,}178$ d'importance
+fabriquée sur l'arbre complet, tandis que `mdi_oob` reste plaquée sur zéro quelle que soit la
+taille. Et il montre aussi que **tronquer suffit** : dès 38 feuilles les deux courbes se rejoignent.
+
+**Le panneau de droite est le piège.** Lu seul, le panneau de gauche suggère une recette simple —
+élaguer à fond, le bruit tombe à $0$. Mais à 4 feuilles le signal s'est effondré à $0{,}68$ pour
+une cible de $1{,}08$. Une mesure qui renverrait **zéro partout** aurait une masse de bruit
+parfaite et ne mesurerait plus rien.
+
+C'est exactement pour ça que le protocole garde `noise_mass` et `signal_mass` **séparées** au lieu
+d'un chiffre unique, et qu'il ajoute `scored` — la fraction de variables ayant reçu quelque chose.
+
+Deux détails qui comptent pour la suite. `mdi_train` **dépasse** la cible sur l'arbre complet
+($1{,}189$) : il gonfle le signal comme il gonfle le bruit. Et `mdi_oob` ne l'atteint jamais
+($0{,}924$ au mieux) : elle sous-estime, c'est son défaut propre.
 
 Deux lectures à tenir ensemble, et c'est le cœur du sujet :
 
