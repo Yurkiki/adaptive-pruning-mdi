@@ -1483,6 +1483,29 @@ print(f"{'masse signal':>12} {verite.sum():>9.3f} {v_etoile[~bruit].sum():>11.3f
 **Les deux optima ne tombent pas au même endroit**, et ce n'est pas un accident de tirage : sur
 30 répétitions indépendantes, ils diffèrent dans **97 %** des cas.
 
+> **Deux vérifications avant d'y croire.**
+>
+> *Le choix de $\alpha'$ triche-t-il ?* Il est sélectionné sur le jeu de validation qui sert
+> ensuite à rapporter l'erreur — le même défaut que les bras `oracle`. En le choisissant sur un
+> jeu **séparé** : $\alpha' = 0{,}62$ contre $\alpha^{\star} = 1{,}25$, encore séparés dans
+> **88 %** des répétitions, et $\alpha' < \alpha^{\star}$ dans **85 %**. Le sens tient.
+>
+> *Le jeu de validation est-il trop petit ?* La prédiction est jugée sur 4000 points frais,
+> l'importance sur 333 seulement : la seconde courbe est donc plus bruitée. En agrandissant le
+> jeu d'évaluation à $n$ constant pour l'arbre :
+>
+> | points d'évaluation | $\alpha'$ médian |
+> |---|---|
+> | $333$ | $0{,}50$ |
+> | $1\,000$ | $0{,}50$ |
+> | $5\,000$ | $0{,}12$ |
+> | $50\,000$ | $0{,}25$ |
+>
+> $\alpha'$ **descend** quand on mesure mieux : le bruit du petit échantillon le tirait vers le
+> haut. L'écart avec $\alpha^{\star} = 1{,}25$ est donc **plus grand** que ce que la cellule
+> ci-dessus affiche, pas plus petit. À retenir : le $0{,}50$ est lié à ce dispositif, la
+> **séparation**, elle, est robuste.
+
 Le tableau variable par variable montre le mécanisme. En $\alpha^{\star}$ — l'élagage qui prédit le
 mieux — l'arbre est plus court, donc il **sous-estime le signal** : la masse de signal s'éloigne de
 sa cible. En $\alpha'$ l'arbre garde davantage de coupures, le signal est mieux restitué, et
