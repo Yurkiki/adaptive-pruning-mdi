@@ -57,7 +57,12 @@ SIGNAL_LIBRARY: tuple[Component, ...] = (LINEAR, SINE, QUADRATIC, STEP, BUMP)
 
 
 def rescaled(component: Component, variance: float) -> Component:
-    """Same shape, scaled so that Var(f(X)) equals `variance`."""
+    """Same shape, scaled so that Var(f(X)) equals `variance`.
+
+    No scenario uses it today: the heterogeneous-importance case it was written
+    for is now covered by DS4 at low SNR. Kept because building a scenario with
+    prescribed I_j is the one thing the Duroux-Scornet models cannot do.
+    """
     if component.variance <= 0.0:
         raise ValueError("cannot rescale a zero-variance component")
     k = float(np.sqrt(variance / component.variance))
@@ -97,20 +102,6 @@ def scenario_s1(snr: float = 4.0, n_noise: int = 5) -> Scenario:
     return Scenario(f"S1_snr{snr:g}", SIGNAL_LIBRARY + (NOISE,) * n_noise, snr)
 
 
-def scenario_s2(snr: float = 4.0, n_noise: int = 5) -> Scenario:
-    """Heterogeneous signal: true importances spanning two orders of magnitude.
-
-    A constant ratio of 3 between consecutive components. The weakest is 0.02
-    against a noise variance near 0.6, so it sits close to the detection limit
-    deliberately: a good measure should call it small but non-zero rather than
-    zero. That also caps the achievable signal-versus-noise AUC in this
-    scenario, which is why Kendall tau matters more here.
-    """
-    targets = (1.62, 0.54, 0.18, 0.06, 0.02)
-    signals = tuple(
-        rescaled(c, t) for c, t in zip(SIGNAL_LIBRARY, targets, strict=True)
-    )
-    return Scenario(f"S2_snr{snr:g}", signals + (NOISE,) * n_noise, snr)
 
 
 # --- Duroux & Scornet (2016), section 4 ------------------------------------
@@ -263,7 +254,6 @@ def _duroux_factory(tag: str) -> ScenarioFactory:
 
 SCENARIOS: dict[str, ScenarioFactory] = {
     "S1": scenario_s1,
-    "S2": scenario_s2,
     **{tag: _duroux_factory(tag) for tag in _DUROUX},
 }
 

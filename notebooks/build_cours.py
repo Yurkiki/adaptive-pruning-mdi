@@ -996,23 +996,46 @@ difficulté différente :
 | | $n$ | $d$ | signaux | bruit | $I_j$ le plus faible | étalement | **ce qu'il met à l'épreuve** |
 |---|---|---|---|---|---|---|---|
 | `S1` | 1000 | 10 | 5 | 50 % | $0{,}083$ | $6\times$ | **le cas de base** : distinguer signal et bruit, tous les signaux étant largement détectables |
-| `S2` | 1000 | 10 | 5 | 50 % | $\mathbf{0{,}020}$ | $\mathbf{81\times}$ | **la limite de détection** : la plus faible vaut $0{,}02$ contre un bruit de $0{,}78$ — elle doit être dite *petite*, pas *nulle* |
 | `DS1` | 800 | 50 | 2 | 96 % | $0{,}040$ | $2\times$ | **la parcimonie** : 2 aiguilles dans 50 colonnes |
 | `DS3` | 600 | 100 | 4 | 96 % | $0{,}089$ | $7\times$ | la parcimonie à $d = 100$ |
 | `DS4` | 600 | 100 | 4 | 96 % | $0{,}206$ | $33\times$ | des contributions très inégales *et* 96 % de bruit |
 | `DS6` | 500 | 30 | 10 | 67 % | $0{,}250$ | $\mathbf{1\times}$ | **la symétrie** : 10 signaux *strictement identiques*, que la mesure doit égaliser |
 | `DS8` | 500 | **1000** | 4 | 100 % | $0{,}333$ | $5\times$ | **$d > n$** : deux fois plus de colonnes que de lignes |
 
-Les deux premiers sont écrits pour ce projet, dans le cadre du Modèle 3 de Scornet (2023) : $X$
-uniforme sur $[0,1]^d$, contributions additives, bruit gaussien. Ils partagent **les mêmes cinq
-fonctions** — seules les échelles changent — ce qui isole l'effet de la distribution des
-importances sans le confondre avec un changement de formes. Et leur SNR est réglable, ce que les
-`DS` ne permettent pas : c'est avec eux qu'on balaie $\mathrm{SNR} \in \{0{,}25,\ 1,\ 4\}$.
+`S1` est écrit pour ce projet, dans le cadre du Modèle 3 de Scornet (2023) : $X$ uniforme sur
+$[0,1]^d$, contributions additives, bruit gaussien. Il sert de **contrôle** — un problème assez
+facile pour que tout échec soit imputable à la mesure, et assez petit ($d = 10$) pour qu'on puisse
+imprimer les dix importances et les lire.
+
+Le SNR est réglable sur **tous** les scénarios, `DS` compris : `simulate.duroux(tag, snr=...)`.
+C'est le levier principal du protocole, et la remarque ci-dessous dit pourquoi.
 
 Les cinq suivants viennent de **Duroux & Scornet (2016)**, section 4. Ils couvrent un régime que
-`S1` et `S2` n'atteignent pas : jusqu'à **100 % de bruit** et $d = 1000$ pour $n = 500$. C'est là
+`S1` n'atteint pas : jusqu'à **100 % de bruit** et $d = 1000$ pour $n = 500$. C'est là
 que le biais devrait frapper le plus fort — plus il y a de colonnes candidates, plus l'arbre a
 d'occasions de tomber par chance sur une coupure de bruit qui « marche ».
+
+> **Plus le rapport signal/bruit est faible, plus l'élagage paie.** C'est la
+> proposition 3.3 de Surjanovic, Henrey & Loughin (2024) : le bon niveau d'élagage est une
+> **fonction du SNR**, et c'est à bas SNR qu'il est le plus payant. L'intuition tient en une
+> phrase — plus il y a de bruit, plus un arbre profond en absorbe, plus il y a à gagner à le
+> raccourcir.
+>
+> C'est **exactement ce qu'on observe**, et ça a renversé notre conclusion. Erreur
+> d'importance de `mdi_oob` face à $\alpha = 0$, 40 répétitions, le meilleur élagage possible :
+>
+> | scénario | $\sigma^2$ | gain |
+> |---|---|---|
+> | `S1`, SNR $= 4$ | $0{,}27$ | $+4{,}2\,\%$ (nuit) |
+> | `DS4`, SNR $= 4$ | $2{,}48$ | $-2{,}0\,\%$ |
+> | `S1`, SNR $= 0{,}25$ | $4{,}33$ | $\mathbf{-17{,}0\,\%}$ |
+> | `DS3`, SNR $= 0{,}25$ | $5{,}80$ | $\mathbf{-15{,}5\,\%}$ |
+> | `DS4`, SNR $= 0{,}25$ | $\mathbf{39{,}68}$ | $\mathbf{-42{,}5\,\%}$ |
+>
+> Le classement suit le bruit, pas la dimension : `S1` ($d = 10$) à bas SNR bat `DS4`
+> ($d = 100$) à SNR élevé. **Tester uniquement à SNR $= 4$ aurait produit un résultat négatif
+> sans valeur** — on aurait évalué la méthode hors des conditions où ses auteurs l'annoncent
+> efficace. La partie 12 dit ce qu'il reste du résultat une fois cette condition respectée.
 
 > **`DS6` mérite une mention à part.** Ses dix signaux ont **exactement** la même importance
 > ($0{,}25$ chacun), donc une mesure correcte doit les déclarer égaux. Mesuré sur `mdi_train`, la
@@ -1208,32 +1231,41 @@ Sur l'ensemble des scénarios et des niveaux de bruit (20 répétitions, deux ta
 L'importance attribuée à des variables prouvées inutiles chute d'un facteur allant jusqu'à 40, et
 ce sur toute la gamme de bruit testée.
 
-**2 · L'élagage n'ajoute rien par-dessus.** Mesuré sur un arbre unique (`S1`, $n = 1000$,
-20 répétitions), erreur d'importance médiane :
+**2 · L'élagage aide — mais seulement quand le bruit est fort.** C'est le résultat le plus
+surprenant du projet, et il dépend entièrement du rapport signal/bruit. Erreur de `mdi_oob` face à
+$\alpha = 0$, arbre unique, 40 répétitions :
 
-| mesure | sans élagage | **oracle** (triche) | **alpha** (choisi par VC) |
+| scénario | $\sigma^2$ | **meilleur élagage possible** | **$\alpha$ choisi par validation croisée** |
 |---|---|---|---|
-| `ufi_half` | $0{,}0142$ | $0{,}0142$ — gain **0,2 %** | $0{,}0330$ — **+131 %** |
-| `mdi_oob` | $0{,}0186$ | $0{,}0181$ — gain **2,6 %** | $0{,}0364$ — **+96 %** |
+| `S1`, SNR $= 4$ | $0{,}27$ | $+4{,}2\,\%$ — nuit | $+41{,}4\,\%$ |
+| `DS4`, SNR $= 4$ | $2{,}48$ | $-2{,}0\,\%$ — neutre | $+23{,}9\,\%$ |
+| `S1`, SNR $= 0{,}25$ | $4{,}33$ | $\mathbf{-17{,}0\,\%}$ | $+18{,}6\,\%$ |
+| `DS3`, SNR $= 0{,}25$ | $5{,}80$ | $\mathbf{-15{,}5\,\%}$ | $+29{,}9\,\%$ |
+| `DS4`, SNR $= 0{,}25$ | $\mathbf{39{,}68}$ | $\mathbf{-42{,}5\,\%}$ | $\mathbf{-17{,}9\,\%}$ |
 
-Deux lectures, et la seconde est la plus parlante. L'oracle — libre de choisir $\alpha$ en
-regardant la vérité — élague bien un peu, mais ne gagne que $0{,}2$ à $2{,}6\,\%$ : le meilleur
-élagage possible ne vaut rien. Et le niveau que la validation croisée choisit réellement **double
-l'erreur**, parce qu'elle optimise la prédiction, pas l'importance.
+**Le gain est réel.** À bas SNR, le meilleur élagage réduit l'erreur de 15 à 43 %. Et il le fait
+aussi sur `S1` ($d = 10$, 50 % de bruit) : ce n'est donc pas la dimension ni la parcimonie qui
+commandent, c'est le **niveau de bruit**. La proposition 3.3 de SHL24 est vérifiée.
 
-> **Nuance de portée.** Sur les forêts, l'oracle choisissait $\alpha = 0$ dans 16 répétitions sur
-> 16 — il refusait purement et simplement d'élaguer. Sur un arbre unique il élague faiblement dans
-> la plupart des répétitions, pour un gain négligeable. La conclusion est la même, le mécanisme
-> est un peu moins net.
+**3 · Mais il est presque inatteignable.** Regardez la dernière colonne : le $\alpha$ que la
+validation croisée choisit réellement ne capte le gain que dans **un cas sur cinq**. Dans les
+quatre autres, il rend l'erreur **18 à 41 % pire**.
 
-**3 · Et il y a une raison mécanique.** Les deux remèdes s'attaquent à **la même chose** : le bruit
-absorbé par un arbre trop profond. L'élagage le retire en raccourcissant l'arbre ; la mesure sur
-données séparées le retire en refusant de créditer une coupure qui ne se reproduit pas. Appliquez
-le second, il ne reste plus rien à retirer au premier — qui ne fait alors que coûter de la
-résolution.
+La raison est structurelle : la VC minimise l'**erreur de prédiction**, et le $\alpha$ qui prédit
+le mieux n'est pas celui qui mesure le mieux. L'écart entre les deux colonnes **est** le résultat
+du projet.
 
-> **Ce sont des substituts, pas des partenaires.** C'est une réponse complète à la question posée,
-> et elle est négative — ce que la formulation « évaluer la pertinence » invitait explicitement.
+> **Ce que ça change par rapport à « l'élagage ne sert à rien ».** La réponse à *« évaluer la
+> pertinence »* n'est ni oui ni non : **l'élagage vaut le coup pour l'importance quand le rapport
+> signal/bruit est faible, et personne ne sait aujourd'hui en choisir la quantité.** C'est plus
+> précis qu'un résultat négatif, et ça désigne le travail suivant : un critère de sélection pensé
+> pour l'importance, pas pour la prédiction.
+
+> **À SNR élevé, ce sont des substituts.** Les deux remèdes retirent la même chose, donc le second
+> appliqué, le premier ne fait plus que coûter de la résolution. **À bas SNR, le bruit absorbé est
+> si massif que la mesure hors-échantillon ne suffit plus à l'éliminer seule** — et l'élagage
+> retrouve une utilité, jusqu'à $-42\,\%$ d'erreur. La frontière se situe autour de
+> $\sigma^2 \approx 2$ à $4$ dans nos scénarios.
 
 **4 · Le résultat le plus prometteur pour la suite** est celui de la figure ci-dessus : le réglage
 bon pour prédire n'est pas celui qui mesure le mieux. Un critère de choix pensé pour l'importance,

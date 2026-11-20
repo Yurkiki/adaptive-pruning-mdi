@@ -122,7 +122,7 @@ come out negative.
 
 ## The arms
 
-Seven arms. All except `standard` are built on the same training split, so
+Nine arms. All except `standard` are built on the same training split, so
 comparing measures within an arm isolates the evaluation data and comparing arms
 within a measure isolates the pruning. `standard` is built on every point,
 because that is what practitioners actually do.
@@ -136,7 +136,12 @@ because that is what practitioners actually do.
 | `alpha0` | `min_samples_leaf = 5` base, no trimming | the clean baseline for `alpha` |
 | `alpha` | alpha-trimming, alpha chosen by CV | **the method under study** |
 | `oracle` | alpha chosen by `ufi_half` importance error | simulation only; an **optimistic** bound, see below |
-| `oracle_oob` | alpha chosen by `mdi_oob` importance error | the same bound for the validation-only measure; the two oracles land on different levels in roughly a third of reps, so one cannot stand in for the other |
+| `oracle_oob` | alpha chosen by `mdi_oob` importance error | the same bound for the validation-only measure |
+| `oracle_train` | alpha chosen by `mdi_train` importance error | best-possible pruning of the **classic** MDI, so [S20]'s remedy at its best can be compared against [ZH21]'s |
+
+One oracle **per measure**, because an oracle selected on `ufi_half` is, read at
+another measure, just some other pruning level: measured, `oracle` and
+`oracle_oob` land on different grid points in roughly a third of repetitions.
 
 **`alpha` vs `global` is the whole project.** Is *adaptive* pruning better than
 merely *shallower* trees? `alpha` vs `alpha0` isolates the pruning alone.
@@ -161,18 +166,19 @@ alpha-trimming spanned the real range (41 leaves at `alpha = 0`, 20 at `alpha = 
 
 > **The oracle double-dips, and it matters.** It selects alpha on `x_val, y_val`
 > and the reported value is computed on those same rows, so it overfits them.
-> Measured on S1 and S2 at `n = 1200`, 100 repetitions, against an oracle that
-> selects on a *separate* held-out split:
+> Measured over 100 repetitions against an oracle that selects on a *separate*
+> held-out split (percentages are against `alpha = 0`; negative means pruning
+> helps):
 >
 > | scenario | measure | our oracle | honest oracle | honest wins |
 > |---|---|---|---|---|
-> | S1 | `mdi_oob` | **-3.2%** | **+2.6%** | 27/100 |
-> | S1 | `ufi_half` | **-1.1%** | **+2.0%** | 26/100 |
-> | S2 | `mdi_oob` | **-11.5%** | **+3.4%** | 44/100 |
-> | S2 | `ufi_half` | **-6.2%** | **+4.0%** | 28/100 |
+> | S1, `n=1200` | `mdi_oob` | **-3.2%** | **+2.6%** | 27/100 |
+> | S1, `n=1200` | `ufi_half` | **-1.1%** | **+2.0%** | 26/100 |
+> | DS4 `snr=0.25`, `n=600` | `mdi_oob` | -48.1% | **-46.9%** | 95/100 |
+> | DS4 `snr=0.25`, `n=600` | `ufi_half` | -54.5% | **-54.0%** | 97/100 |
 >
-> The sign flips in all four cells. Our oracle's apparent 1-11% gain over
-> `alpha = 0` is an artefact; with honest selection, the best available pruning
+> On S1 the sign flips: our oracle's apparent gain over `alpha = 0` is an
+> artefact, and with honest selection, the best available pruning
 > *loses* 2-4%. Read the oracle as a ceiling ("pruning cannot beat this"), never
 > as an achievable score. This strengthens the negative result rather than
 > weakening it: the ceiling itself is barely above `alpha = 0`, and anything
@@ -186,22 +192,30 @@ Every clause of the brief now has code behind it:
 |---|---|
 | arbres moins profonds, de manière adaptative | `src/prune.py` — alpha-trimming, plus cost-complexity as a second adaptive method |
 | calculé sur un jeu de données de validation | `src/experiment.py` — literal train/validation split; pruning tuned by CV inside the training split |
-| jeux de données simulées | `src/simulate.py` — S1, S2, with analytic `I_j` |
-| jeux de données réelles | `src/realdata.py` — built, but **paused on Scornet's instruction** (see below) |
+| jeux de données simulées | `src/simulate.py` — S1 plus the five additive Duroux-Scornet models, with analytic `I_j` |
+| jeux de données réelles | `src/realdata.py` — built, but **out of scope** until the simulated picture is settled |
 | évaluer la pertinence | `src/analyse.py` — metrics, paired tests, six figures |
 
-48 tests. Model code: `src/tree.py` (tree arrays, `Model`), `src/models.py` (families, CV tuning).
+72 tests. Model code: `src/tree.py` (tree arrays, `Model`), `src/models.py` (families, CV tuning).
+
+> **S2 was retired.** It was a purpose-built scenario with importances spanning
+> two orders of magnitude, there to make the measures separable -- on S1 all
+> three sit at 0.97-0.99 AUC and nothing can be told apart. `DS4` at `snr=0.25`
+> does the same job from the literature: the spread between best and worst
+> measure is 2.50x against S2's 2.67x. `simulate.rescaled()` is kept, since
+> prescribing `I_j` exactly is the one thing the DS models cannot do.
 
 Remaining, in order:
 
 | # | Do | Why |
 |---|---|---|
-| 0 | **Re-run every finding below on single trees** (S1, S2, several `n` and SNR) | the numbers below were measured on forests; finding 6 has now been redone, see below |
-| 1 | **Validation-fraction sweep** — `--val-fraction 0.2 0.33 0.5` | at `n=250` the held-out set is 83 rows against 167 leaves in the full tree; untested |
-| 2 | **Low-SNR scenario.** [SHL24] say pruning pays off most when the signal-to-noise ratio is low, and every run so far is at SNR = 4 | the condition their method is designed for is the one we have not tried |
+| 0 | **Re-run every finding below on single trees** | partly done: findings 6 and 8 redone, the rest still forest-only |
+| 1 | ~~Validation-fraction sweep~~ | **done.** At `val_fraction` from 0.10 to 0.70 (0.7 to 14.6 validation rows per leaf) the best achievable gain from pruning stays under 0.5%. The conclusion does not depend on validation size |
+| 2 | ~~Low-SNR scenario~~ | **done, and it changed the answer** -- see finding 8 |
 | 3 | **A finer alpha grid** `{0, 0.1, ..., 3.0}` for final numbers (`ModelConfig.alpha_grid`) | runs use an 11-point grid for speed |
 | 4 | **Reproduce one [SHL24] benchmark** | independent check that our transcription of Algorithm 1 is faithful |
-| 5 | **Run the Duroux--Scornet models** (below) beside S1 and S2 | scenarios Scornet pointed us at; wider `d`, sparser signal |
+| 5 | **Run the DS models through the full paired protocol** | they are in `simulate.py` and used in the ad-hoc runs below, but no HEADLINE comparison table covers them yet |
+| 6 | **Find a selection rule aimed at importance, not prediction** | finding 8 shows the gain exists and that CV on prediction error misses it in four regimes out of five |
 
 ## Simulated data only, for now
 
@@ -265,13 +279,22 @@ Ordered by how much I would stake on it.
 **1. The held-out fix works.** Importance handed to features whose truth is
 exactly zero, `full` forest:
 
-| | S1 | S2 |
+| | S1 | S2 (retired) |
 |---|---|---|
 | `mdi_train` | 0.368 | 0.797 |
 | `ufi_half` | −0.015 | −0.024 |
 
 Roughly a 75x reduction, stable at every sample size. This is half the brief and
 it is not in doubt.
+
+> **But measured against a fully grown tree, which [S20] forbids.** Sweeping
+> `min_samples_leaf` on S1 (`n=1500`, 30 reps), the noise mass for `mdi_train`
+> falls 0.178 → 0.087 → 0.012 → 0.0008 → 0.0000 at 1, 5, 20, 50, 100, while the
+> held-out measures sit at zero throughout. **From 50 rows per leaf the three are
+> indistinguishable.** The 75x gap is real but it is a gap against the one
+> configuration nobody recommends; truncating repairs the classic MDI just as
+> well. That is why the project's question is whether the two remedies *add up*,
+> not whether held-out beats a full tree.
 
 **2. UFI carries twice the scale of MDI-oob** on signal features. Not stated in
 [ZH21] because they only ever rank with it. Unhalved, every bias number doubles.
@@ -286,11 +309,12 @@ in-bag `Var(y)` to 1e-9, and the held-out measures recover only 54% of the signa
 at `n_train` = 167, rising to 84% at 4000 -- measured with a 100k validation set,
 so it is the forest's own limit, not estimation noise.
 
-**5. Pruning is two-sided.** It *helps* the in-bag measure and *hurts* the
-held-out one, consistently and significantly. In S2 at `n=1000`, pruning improved
+**5. Pruning is two-sided -- at SNR 4.** It *helps* the in-bag measure and
+*hurts* the held-out one. In the retired S2 scenario at `n=1000`, pruning improved
 `mdi_train` in 8 reps of 8 (best alpha 0.5-1.0) while making `ufi_half` worse in
-8 of 8. The two fixes partly work against each other: the held-out measure has no
-noise inflation left for pruning to remove, so pruning only costs it resolution.
+8 of 8. The mechanism: the held-out measure has no noise inflation left for
+pruning to remove, so pruning only costs it resolution. **Finding 8 bounds how
+far this generalises** -- it does not survive low SNR.
 
 **6. No pruning level helps the held-out MDI -- at SNR 4.** Across alpha from 0 to
 3 (67.6 down to 4.5 leaves) the error rises monotonically, and the *oracle*, free
@@ -316,6 +340,39 @@ from "OOB chose badly" answers the first.
 > settles whether finding 6 generalises.
 
 **7. UFI beats MDI-oob** on the same forest, significantly (85% of reps).
+
+**8. Pruning DOES help the held-out MDI -- but only at low SNR, and the practical
+selector almost never finds it.** This overturns how findings 5 and 6 were
+stated. [SHL24] proposition 3.3 says the right amount of pruning is a function of
+the signal-to-noise ratio, with low SNR favouring more of it; every run behind
+findings 5 and 6 sat at SNR 4. Sweeping it, single tree, `mdi_oob`, 40
+repetitions, against `alpha = 0`:
+
+| scenario | `d` | noise share | `sigma^2` | honest oracle | alpha by CV |
+|---|---|---|---|---|---|
+| S1, `snr=4` | 10 | 50% | 0.27 | +4.2% | +41.4% |
+| S1, `snr=0.25` | 10 | 50% | 4.33 | **-17.0%** | +18.6% |
+| DS4, `snr=4` | 100 | 96% | 2.48 | -2.0% | +23.9% |
+| DS4, `snr=0.25` | 100 | 96% | **39.68** | **-42.5%** | **-17.9%** |
+| DS3, `snr=0.25` | 100 | 96% | 5.80 | **-15.5%** | +29.9% |
+
+Two readings, and the second is the contribution.
+
+*The gain is real.* At low SNR the best available pruning cuts the held-out
+importance error by 15% to 43%, and it does so on S1 too -- so this is driven by
+the noise level, not by dimension or sparsity. [SHL24]'s own condition was the
+one we had not tested, and it holds.
+
+*But it is nearly unreachable.* The alpha that cross-validation actually selects
+captures the gain in **one regime out of five** (DS4 at `snr=0.25`, the extreme
+with `sigma^2 = 39.7`). In the other four it makes the error **18% to 41% worse**.
+CV optimises prediction error, and the alpha that predicts best is not the alpha
+that measures best -- the gap between the two columns is the whole result.
+
+So the honest answer to *evaluer la pertinence* is neither a flat yes nor a flat
+no: **pruning is worth doing for importance when the signal-to-noise ratio is low,
+and nobody currently knows how to select the amount.** That is a sharper finding
+than "pruning does not help", and it names the next piece of work.
 
 ### Mistakes found along the way
 

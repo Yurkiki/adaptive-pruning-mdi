@@ -36,7 +36,7 @@ error at every pruning level.
 
 | File | Contents |
 |---|---|
-| `src/simulate.py` | additive generators — S1, S2 and the five additive Duroux & Scornet models; true importance `I_j = Var(f_j(X_j))` known analytically |
+| `src/simulate.py` | additive generators — S1 and the five additive Duroux & Scornet models; true importance `I_j = Var(f_j(X_j))` known analytically |
 | `src/tree.py` | tree arrays detached from scikit-learn; `Model` = one tree or a forest |
 | `src/models.py` | the pruning families (full, global depth control, cost-complexity, alpha-trimming), tuned by K-fold CV |
 | `src/mdi.py` | the three measures: `mdi_train`, `mdi_oob`, `ufi_half` |
