@@ -655,10 +655,14 @@ personne ne recommande. Refaisons la mesure en tronquant progressivement.
 """)
 
 co(r"""
-# meme protocole, en faisant varier la taille minimale des feuilles
-print(f"{'min_samples_leaf':>17} {'feuilles':>9} {'mdi_train':>11} {'mdi_oob':>10} {'ufi_half':>10}")
-for msl in (1, 5, 20, 50, 100):
-    masses = {k: [] for k in mdi.MEASURES}
+# meme protocole, en faisant varier la taille minimale des feuilles.
+# On garde la masse de bruit : la verite vaut 0 pour chaque ligne du tableau.
+tailles = (1, 5, 20, 50, 100)
+masse = {k: [] for k in mdi.MEASURES}
+feuilles_msl = []
+
+for msl in tailles:
+    par_rep = {k: [] for k in mdi.MEASURES}
     nb = []
     for rep in range(30):
         g = np.random.default_rng(rep)
@@ -669,11 +673,46 @@ for msl in (1, 5, 20, 50, 100):
         mod = models.grow(Xa[t_r], ya[t_r] - ctr, cfg, seed=rep, min_samples_leaf=msl)
         nb.append(mod.mean_leaves)
         for k, val_ in mdi.all_measures(mod, Xa[v_r], ya[v_r] - ctr, d).items():
-            masses[k].append(val_[bruit].sum())
-    etiq_msl = f"{msl} (COMPLET)" if msl == 1 else str(msl)
-    print(f"{etiq_msl:>17} {np.mean(nb):>9.0f} "
-          + " ".join(f"{np.mean(masses[k]):>+10.4f}" for k in mdi.MEASURES))
-print("\nmasse de bruit, vérité = 0, moyenne sur 30 répétitions")
+            par_rep[k].append(val_[bruit].sum())
+    feuilles_msl.append(np.mean(nb))
+    for k in mdi.MEASURES:
+        masse[k].append(np.mean(par_rep[k]))
+
+print("importance attribuée aux 5 variables de bruit — la vérité est 0")
+print(f"{'feuilles':>10} {'mdi_train':>11} {'mdi_oob':>10} {'ufi_half':>10}")
+for i_, msl in enumerate(tailles):
+    print(f"{feuilles_msl[i_]:>10.0f} "
+          + " ".join(f"{masse[k][i_]:>+10.4f}" for k in mdi.MEASURES))
+""")
+
+co(r"""
+fig, ax = plt.subplots(figsize=(8.0, 4.2))
+
+ax.axhspan(-0.012, 0.012, color="#f2f2ef", zorder=0)
+ax.axhline(0, color=INK, lw=1.8, ls=(0, (6, 3)), zorder=2)
+ax.text(feuilles_msl[0]*0.78, 0.016, "la vérité : 0", fontsize=9.5, color=INK)
+
+for nom, coul in (("mdi_train", ORANGE), ("mdi_oob", BLEU), ("ufi_half", VERT)):
+    ax.plot(feuilles_msl, masse[nom], marker="o", ms=7, lw=2.0, color=coul,
+            mec="white", mew=1.5, label=nom, zorder=3)
+
+ax.annotate("arbre complet\n(1 point par feuille)",
+            (feuilles_msl[0], masse["mdi_train"][0]),
+            textcoords="offset points", xytext=(18, -6), fontsize=9, color=ORANGE)
+ax.annotate("dès 15 feuilles,\nles trois se rejoignent",
+            (feuilles_msl[-2], 0.0), textcoords="offset points", xytext=(-30, 42),
+            fontsize=9, color=SOFT,
+            arrowprops=dict(arrowstyle="->", color=SOFT, lw=1.1))
+
+ax.set_xscale("log")
+ax.set_xticks(feuilles_msl)
+ax.set_xticklabels([f"{v:.0f}" for v in feuilles_msl])
+ax.set_xlabel("nombre de feuilles de l'arbre   (échelle log)")
+ax.set_ylabel("importance donnée au bruit")
+ax.legend(frameon=False, loc="upper left")
+ax.grid(axis="y")
+ax.set_title("Tronquer l'arbre suffit à faire disparaître le biais", fontsize=11, color=INK)
+plt.tight_layout(); plt.show()
 """)
 
 md(r"""
