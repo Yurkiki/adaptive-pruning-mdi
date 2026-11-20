@@ -990,16 +990,37 @@ et les variables indépendantes.
 
 ### Les scénarios disponibles
 
-Deux familles, toutes additives à variables indépendantes — la seule situation où $I_j$ existe.
+Tous additifs à variables indépendantes — la seule situation où $I_j$ existe. Chacun isole une
+difficulté différente :
 
-| | d'où ça vient | $d$ | signaux |
-|---|---|---|---|
-| `S1` | fabriqué pour ce projet : cinq formes de tailles comparables | 10 | 5 |
-| `S2` | idem, mais les importances couvrent deux ordres de grandeur | 10 | 5 |
-| `DS1`, `DS3`, `DS4`, `DS6`, `DS8` | **Duroux & Scornet (2016)**, section 4 | 30 à 1000 | 2 à 10 |
+| | $n$ | $d$ | signaux | bruit | $I_j$ le plus faible | étalement | **ce qu'il met à l'épreuve** |
+|---|---|---|---|---|---|---|---|
+| `S1` | 1000 | 10 | 5 | 50 % | $0{,}083$ | $6\times$ | **le cas de base** : distinguer signal et bruit, tous les signaux étant largement détectables |
+| `S2` | 1000 | 10 | 5 | 50 % | $\mathbf{0{,}020}$ | $\mathbf{81\times}$ | **la limite de détection** : la plus faible vaut $0{,}02$ contre un bruit de $0{,}78$ — elle doit être dite *petite*, pas *nulle* |
+| `DS1` | 800 | 50 | 2 | 96 % | $0{,}040$ | $2\times$ | **la parcimonie** : 2 aiguilles dans 50 colonnes |
+| `DS3` | 600 | 100 | 4 | 96 % | $0{,}089$ | $7\times$ | la parcimonie à $d = 100$ |
+| `DS4` | 600 | 100 | 4 | 96 % | $0{,}206$ | $33\times$ | des contributions très inégales *et* 96 % de bruit |
+| `DS6` | 500 | 30 | 10 | 67 % | $0{,}250$ | $\mathbf{1\times}$ | **la symétrie** : 10 signaux *strictement identiques*, que la mesure doit égaliser |
+| `DS8` | 500 | **1000** | 4 | 100 % | $0{,}333$ | $5\times$ | **$d > n$** : deux fois plus de colonnes que de lignes |
 
-Les modèles Duroux–Scornet sont plus larges et plus parcimonieux que les nôtres : `DS8` a 1000
-variables dont **4** seulement portent du signal, soit deux fois plus de colonnes que de lignes.
+Les deux premiers sont écrits pour ce projet, dans le cadre du Modèle 3 de Scornet (2023) : $X$
+uniforme sur $[0,1]^d$, contributions additives, bruit gaussien. Ils partagent **les mêmes cinq
+fonctions** — seules les échelles changent — ce qui isole l'effet de la distribution des
+importances sans le confondre avec un changement de formes. Et leur SNR est réglable, ce que les
+`DS` ne permettent pas : c'est avec eux qu'on balaie $\mathrm{SNR} \in \{0{,}25,\ 1,\ 4\}$.
+
+Les cinq suivants viennent de **Duroux & Scornet (2016)**, section 4. Ils couvrent un régime que
+`S1` et `S2` n'atteignent pas : jusqu'à **100 % de bruit** et $d = 1000$ pour $n = 500$. C'est là
+que le biais devrait frapper le plus fort — plus il y a de colonnes candidates, plus l'arbre a
+d'occasions de tomber par chance sur une coupure de bruit qui « marche ».
+
+> **`DS6` mérite une mention à part.** Ses dix signaux ont **exactement** la même importance
+> ($0{,}25$ chacun), donc une mesure correcte doit les déclarer égaux. Mesuré sur `mdi_train`, la
+> dispersion relative entre les dix estimations vaut **57 %** pour un arbre unique, **30 %** pour
+> une forêt de 100 — la forêt réduit de moitié, sans annuler. C'est le seul scénario qui sépare ce
+> que coûte *un arbre* de ce qu'apporte *une forêt*, et il rejoint une remarque de Scornet (2023)
+> sur les modèles symétriques : égaliser des variables interchangeables est hors de portée d'un
+> arbre seul, et devient un objectif atteignable en moyennant.
 
 > **Trois des huit modèles du papier sont inutilisables ici.** Les modèles 2, 5 et 7 contiennent
 > des produits ($\tilde{X}_1\tilde{X}_2$) et des indicatrices à plusieurs variables. Dans ces cas,
