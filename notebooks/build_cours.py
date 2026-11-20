@@ -1341,8 +1341,25 @@ et non pour la prédiction, serait une contribution à part entière.
 """)
 
 
+# cellules retirees de la version en travaux, gardees dans la version complete
+RETIREES_EN_WIP = (
+    "**Le panneau de gauche** est le bug de la partie 5",
+    "# On ajoute une constante a y, ce qui ne deplace AUCUNE information.",
+    "**Comment lire le tableau.** Les quatre colonnes de chiffres",
+    "## 11. Le plan d'expérience",
+)
+
+# passage retire de la partie 10 en version travaux
+COUPE_EN_WIP = """> **Pourquoi pas des données réelles ?** Parce qu'on ne pourrait rien conclure : la véritable
+> importance y est inconnue, donc aucun écart ne serait interprétable. Le code existe
+> (`src/realdata.py`) mais reste hors périmètre tant que le tableau sur données simulées n'est pas
+> établi."""
+
 if WIP:
-    C = C[:PARTIE_12]
+    C = [c for c in C[:PARTIE_12]
+         if not any(marque in c["source"] for marque in RETIREES_EN_WIP)]
+    for c in C:
+        c["source"] = c["source"].replace(COUPE_EN_WIP, "")
     md(r"""
 ---
 ## 12. Ce qu'on a trouvé
@@ -1360,74 +1377,6 @@ chiffres ne sont pas encore consolidés.
 Trois façons de mesurer l'importance, sur les mêmes données, 20 répétitions.
 """)
 
-    co(r"""
-R = 20
-resultat = {k: {"err": [], "bruit": []} for k in
-            ("pratique courante", "mdi_oob seul", "mdi_oob + élagage")}
-
-for rep in range(R):
-    g = np.random.default_rng(rep)
-    Xa, ya = simulate.sample(scenario, 1000, g)
-    ordre_a = g.permutation(1000)
-    v_a, t_a = ordre_a[:333], ordre_a[333:]
-    ctr = float(ya[t_a].mean())
-
-    # 1. ce que tout le monde fait : arbre complet sur TOUTES les donnees, MDI classique
-    st = models.grow(Xa, ya - float(ya.mean()), cfg, seed=rep)
-    val_st = mdi.model_mdi_train(st, d)
-
-    # 2 et 3. mdi_oob sans puis avec elagage, alpha choisi par validation croisee
-    chemin = models.pruning_path(models.ALPHA, Xa[t_a], ya[t_a] - ctr, cfg, rep)
-    sans = models.select_level(chemin, 0.0, "alpha0")
-    avec = models.select_by_cv(chemin)
-
-    for nom, v in (("pratique courante", val_st),
-                   ("mdi_oob seul",      mdi.model_mdi_oob(sans.model, Xa[v_a], ya[v_a]-ctr, d)),
-                   ("mdi_oob + élagage", mdi.model_mdi_oob(avec.model, Xa[v_a], ya[v_a]-ctr, d))):
-        resultat[nom]["err"].append(((v - verite)**2).sum())
-        resultat[nom]["bruit"].append(v[bruit].sum())
-
-print(f"{'':>20} {'erreur totale':>14} {'masse du bruit':>16}")
-for nom, r in resultat.items():
-    print(f"{nom:>20} {np.mean(r['err']):>14.4f} {np.mean(r['bruit']):>16.4f}")
-print(f"{'la vérité':>20} {0.0:>14.4f} {0.0:>16.4f}")
-""")
-
-    md(r"""
-**Deux lectures opposées, et c'est tout le problème.**
-
-Sur la **masse du bruit** — l'importance attribuée à des variables dont la vraie valeur est zéro —
-le remède est spectaculaire : $0{,}173$ pour la pratique courante contre $0{,}004$ pour `mdi_oob`,
-un facteur **40**. Sur l'**erreur totale**, en revanche, `mdi_oob` ne fait pas mieux ($0{,}0212$
-contre $0{,}0198$) : ce qu'elle gagne sur le bruit, elle le reperd en sous-estimant le signal.
-
-Et **l'élagage dégrade les deux** : erreur totale $+35\,\%$, et il ne gagne que dans 3 répétitions
-sur 20.
-
-Un seul scénario, une seule taille, un seul SNR : c'est trop peu pour conclure. Mais ça montre
-pourquoi le protocole de la partie 11 sépare `noise_mass` de `signal_mass` au lieu d'un seul
-chiffre, et pourquoi il faut des tests appariés sur sept scénarios.
-
-### Pourquoi l'élagage perd : les deux objectifs ne demandent pas la même chose
-
-Le MDI ne sert pas à prédire. Il répond à *« quelles variables comptent ? »* — pour comprendre un
-phénomène, supprimer des mesures coûteuses, ou vérifier qu'un modèle ne s'appuie pas sur
-n'importe quoi. Il est **calculé à partir** d'un modèle prédictif, mais il ne prédit rien
-lui-même.
-
-Rien n'impose donc que le réglage qui prédit le mieux mesure le mieux. Vérifions.
-
-
-L'alpha-trimming n'a qu'**un** paramètre. On peut le choisir pour **prédire** ($\alpha^{\star}$,
-ce que fait la validation croisée) ou pour **mesurer l'importance** ($\alpha'$, qui minimise
-$\sum_j (\hat{I_j} - I_j)^2$ et n'est calculable qu'en simulation). Rien ne les oblige à coïncider.
-
-> **L'importance est ici `mdi_oob`** — la mesure calculée **uniquement sur le jeu de validation**,
-> celle qui n'emprunte rien aux lignes d'entraînement. C'est la lecture la plus stricte du sujet.
-> Trois jeux distincts interviennent : l'arbre est construit sur **667** lignes, `mdi_oob` est
-> évaluée sur les **333** mises de côté, et l'erreur de prédiction sur **4000** points tirés à
-> part — sans quoi les deux courbes partageraient le même bruit.
-""")
     co(r"""
 grille_a = (0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0)
 R = 20
