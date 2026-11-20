@@ -643,6 +643,55 @@ md(r"""
 **Le remède fonctionne.** Le bruit passe d'une masse franchement positive à quelque chose
 d'indiscernable de zéro.
 
+### Mais sur quel arbre ? La nuance qui compte
+
+Cet arbre a **800 feuilles pour 800 lignes** d'entraînement : un point par feuille, l'arbre
+complet. Or c'est exactement la configuration que Scornet (2023) **interdit** :
+
+> *« We therefore stress that MDI must **not** be computed using fully grown trees. »*
+
+Comparer le remède hors-échantillon à un arbre complet, c'est donc le comparer à une pratique que
+personne ne recommande. Refaisons la mesure en tronquant progressivement.
+""")
+
+co(r"""
+# meme protocole, en faisant varier la taille minimale des feuilles
+print(f"{'min_samples_leaf':>17} {'feuilles':>9} {'mdi_train':>11} {'mdi_oob':>10} {'ufi_half':>10}")
+for msl in (1, 5, 20, 50, 100):
+    masses = {k: [] for k in mdi.MEASURES}
+    nb = []
+    for rep in range(30):
+        g = np.random.default_rng(rep)
+        Xa, ya = simulate.sample(scenario, 1500, g)
+        ordre_r = g.permutation(1500)
+        v_r, t_r = ordre_r[:500], ordre_r[500:]
+        ctr = float(ya[t_r].mean())
+        mod = models.grow(Xa[t_r], ya[t_r] - ctr, cfg, seed=rep, min_samples_leaf=msl)
+        nb.append(mod.mean_leaves)
+        for k, val_ in mdi.all_measures(mod, Xa[v_r], ya[v_r] - ctr, d).items():
+            masses[k].append(val_[bruit].sum())
+    etiq_msl = f"{msl} (COMPLET)" if msl == 1 else str(msl)
+    print(f"{etiq_msl:>17} {np.mean(nb):>9.0f} "
+          + " ".join(f"{np.mean(masses[k]):>+10.4f}" for k in mdi.MEASURES))
+print("\nmasse de bruit, vérité = 0, moyenne sur 30 répétitions")
+""")
+
+md(r"""
+**L'écart se referme.** Sur l'arbre complet, `mdi_train` fabrique $0{,}18$ d'importance et les
+mesures hors-échantillon sont à zéro — un facteur 50. Dès 50 lignes par feuille, les trois
+affichent $\pm 0{,}001$ : **plus aucune différence**.
+
+Deux lectures à tenir ensemble, et c'est le cœur du sujet :
+
+- **le bug est réel**, et la première ligne le démontre — c'est précisément ce que Scornet
+  établit théoriquement, et pourquoi il interdit l'arbre complet ;
+- **mais tronquer le répare aussi**, sans rien changer à la mesure. Il reste donc deux remèdes
+  concurrents pour le même défaut.
+
+> **La vraie question du projet n'est donc pas « le hors-échantillon bat-il l'arbre complet ? »**
+> — ce serait un homme de paille. C'est : **les deux remèdes s'additionnent-ils, ou sont-ils
+> substituts ?** La partie 9 introduit le second, la partie 12 tranche.
+
 Un dernier fait qui n'est dans aucun des deux articles, et qui découle de l'algèbre ci-dessus :
 **l'UFI est insensible au décalage de $y$, le MDI-oob non.** Le MDI-oob porte un facteur $\mu_N$ qui
 grandit avec la moyenne de $y$ ; l'UFI, écrit en différences de carrés, n'en a pas.
