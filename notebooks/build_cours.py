@@ -1380,10 +1380,12 @@ Trois façons de mesurer l'importance, sur les mêmes données, 20 répétitions
     co(r"""
 grille_a = (0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0)
 R = 20
-err_pred, err_imp, nb_feuilles = [], [], []
+err_pred, nb_feuilles = [], []
+err_imp = {m: [] for m in mdi.MEASURES}
 
 for a in grille_a:
-    p_, i_, f_ = [], [], []
+    p_, f_ = [], []
+    e_ = {m: [] for m in mdi.MEASURES}
     for rep in range(R):
         g = np.random.default_rng(rep)
         Xa, ya = simulate.sample(scenario, 1000, g)
@@ -1394,51 +1396,76 @@ for a in grille_a:
         mod = prune.trim(models.grow(Xa[t_a], ya[t_a] - ctr, cfg, seed=rep,
                                      min_samples_leaf=5), a)
         p_.append(np.mean((mod.predict(Xtest) - (ytest - ctr))**2))
-        i_.append(((mdi.model_mdi_oob(mod, Xa[v_a], ya[v_a] - ctr, d) - verite)**2).sum())
         f_.append(mod.mean_leaves)
-    err_pred.append(np.mean(p_)); err_imp.append(np.mean(i_)); nb_feuilles.append(np.mean(f_))
+        for m, v in mdi.all_measures(mod, Xa[v_a], ya[v_a] - ctr, d).items():
+            e_[m].append(((v - verite)**2).sum())
+    err_pred.append(np.mean(p_)); nb_feuilles.append(np.mean(f_))
+    for m in mdi.MEASURES:
+        err_imp[m].append(np.mean(e_[m]))
 
-k_pred, k_imp = int(np.argmin(err_pred)), int(np.argmin(err_imp))
+k_pred = int(np.argmin(err_pred))
+k_imp = {m: int(np.argmin(err_imp[m])) for m in mdi.MEASURES}
 
-print(f"{'alpha':>6} {'feuilles':>9} {'err PRÉDICTION':>16} {'err IMPORTANCE':>16}")
+print(f"{'alpha':>6} {'feuilles':>9} {'PRÉDICTION':>12} | "
+      + " ".join(f"{m:>11}" for m in mdi.MEASURES))
+print("-" * 73)
 for i_a, a in enumerate(grille_a):
-    marque = ("   <- alpha*" if i_a == k_pred else "") + ("   <- alpha'" if i_a == k_imp else "")
-    print(f"{a:>6.2f} {nb_feuilles[i_a]:>9.0f} {err_pred[i_a]:>16.4f} "
-          f"{err_imp[i_a]:>16.5f}{marque}")
+    marque = ("   <- alpha*" if i_a == k_pred else "")
+    for m in mdi.MEASURES:
+        if k_imp[m] == i_a:
+            marque += f"   <- alpha'({m})"
+    print(f"{a:>6.2f} {nb_feuilles[i_a]:>9.0f} {err_pred[i_a]:>12.4f} | "
+          + " ".join(f"{err_imp[m][i_a]:>11.5f}" for m in mdi.MEASURES) + marque)
 
-print(f"\nalpha* = {grille_a[k_pred]}   alpha' = {grille_a[k_imp]}")
-print("\nce que coûte le mauvais choix :")
-print(f"   choisir alpha' -> on prédit  {100*(err_pred[k_imp]-err_pred[k_pred])/err_pred[k_pred]:+5.1f} % moins bien")
-print(f"   choisir alpha* -> on mesure  {100*(err_imp[k_pred]-err_imp[k_imp])/err_imp[k_imp]:+5.1f} % moins bien")
+print(f"\nalpha* (prédiction) = {grille_a[k_pred]}")
+for m in mdi.MEASURES:
+    print(f"alpha' ({m:<9}) = {grille_a[k_imp[m]]}")
 """)
     co(r"""
-fig, (haut, bas) = plt.subplots(2, 1, figsize=(8.2, 5.2), sharex=True,
+fig, (haut, bas) = plt.subplots(2, 1, figsize=(8.4, 5.6), sharex=True,
                                 gridspec_kw={"hspace": 0.16})
-for ax, serie, coul, kk, titre, ylab in (
-    (haut, err_pred, ORANGE, k_pred, "Prédire", "erreur de prédiction"),
-    (bas,  err_imp,  PRUNE,  k_imp,  "Mesurer l'importance", "erreur d'importance"),
-):
-    ax.plot(grille_a, serie, marker="o", color=coul, lw=2.2, ms=6.5, mec="white",
-            mew=1.5, zorder=3)
-    ax.scatter([grille_a[kk]], [serie[kk]], s=210, facecolor="none", edgecolor=coul,
-               lw=2.4, zorder=4)
-    ax.axvline(grille_a[kk], color=coul, ls=":", lw=1.5, zorder=2)
-    ax.set_ylabel(ylab, fontsize=9.5)
-    ax.set_title(titre, fontsize=10, color=INK, loc="left")
-    ax.grid()
 
+haut.plot(grille_a, err_pred, marker="o", color=ORANGE, lw=2.2, ms=6.5, mec="white",
+          mew=1.5, zorder=3)
+haut.scatter([grille_a[k_pred]], [err_pred[k_pred]], s=210, facecolor="none",
+             edgecolor=ORANGE, lw=2.4, zorder=4)
+haut.set_ylabel("erreur de prédiction", fontsize=9.5)
+haut.set_title("Prédire", fontsize=10, color=INK, loc="left")
 haut.annotate(f"$\\alpha^\\star$ = {grille_a[k_pred]}", (grille_a[k_pred], err_pred[k_pred]),
-              textcoords="offset points", xytext=(14, 12), fontsize=10, color=ORANGE)
-bas.annotate(f"$\\alpha'$ = {grille_a[k_imp]}", (grille_a[k_imp], err_imp[k_imp]),
-             textcoords="offset points", xytext=(14, 12), fontsize=10, color=PRUNE)
-bas.axvline(grille_a[k_pred], color=ORANGE, ls=":", lw=1.5, zorder=1)
+              textcoords="offset points", xytext=(14, 10), fontsize=10, color=ORANGE)
 
+for m, coul in (("mdi_train", "#2a78d6"), ("mdi_oob", PRUNE), ("ufi_half", VERT)):
+    bas.plot(grille_a, err_imp[m], marker="o", color=coul, lw=2.0, ms=6, mec="white",
+             mew=1.4, label=m, zorder=3)
+    bas.scatter([grille_a[k_imp[m]]], [err_imp[m][k_imp[m]]], s=190, facecolor="none",
+                edgecolor=coul, lw=2.2, zorder=4)
+bas.set_ylabel("erreur d'importance", fontsize=9.5)
+bas.set_title("Mesurer l'importance — les trois mesures", fontsize=10, color=INK, loc="left")
+bas.legend(frameon=False, fontsize=9, loc="upper left")
+
+for ax in (haut, bas):
+    ax.axvline(grille_a[k_pred], color=ORANGE, ls=":", lw=1.5, zorder=1)
+    ax.grid()
 bas.set_xlabel("alpha (sévérité de l'élagage)")
-fig.suptitle("Deux objectifs, deux optima", fontsize=11, color=INK)
+fig.suptitle("Les trois mesures veulent moins d'élagage que la prédiction",
+             fontsize=11, color=INK)
 plt.tight_layout(); plt.show()
 """)
     md(r"""
-**L'échange est très inégal.** Choisir $\alpha'$ coûte **13 %** de prédiction ; choisir
+**Les trois mesures s'accordent sur une chose : il faut élaguer moins que pour prédire.**
+
+| | $\alpha'$ | ce que la mesure corrige déjà |
+|---|---|---|
+| `mdi_train` | $0{,}75$ | rien — c'est elle qui a besoin du plus d'élagage |
+| `mdi_oob` | $0{,}50$ | le biais hors-échantillon |
+| `ufi_half` | $0{,}25$ | idem, et elle en a besoin encore moins |
+| **prédiction** | $\mathbf{1{,}25}$ | — |
+
+L'ordre n'est pas un hasard : **plus la mesure corrige déjà le biais, moins elle réclame
+d'élagage**. C'est la thèse des substituts, lisible en une colonne — l'élagage et la mesure
+hors-échantillon retirent la même chose, donc celle qui a déjà retiré n'a plus besoin de l'autre.
+
+**Et l'échange est très inégal.** Choisir $\alpha'$ coûte **13 %** de prédiction ; choisir
 $\alpha^{\star}$ coûte **65 %** de précision d'importance.
 
 La raison : l'erreur de prédiction est dominée par les gros signaux, alors que l'erreur
