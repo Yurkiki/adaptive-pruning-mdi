@@ -49,9 +49,8 @@ produites par les cellules.
 """ if not WIP else r"""
 # Importance des variables : pourquoi la mesure standard est fausse, et comment la réparer
 
-> ### 🚧 Version de travail
-> Les parties **1 à 11** sont rédigées et tournent. La partie 12 attend la fin des
-> expériences — le protocole est fixé, les runs sont en cours.
+> **Version de travail.** Les parties 1 à 11 sont rédigées et tournent. La partie 12 attend la
+> fin des expériences.
 
 **Ce notebook ne suppose aucune connaissance préalable.** On part de zéro : ce qu'est un arbre de
 décision, ce qu'il mesure, pourquoi sa mesure d'importance est biaisée, et les deux remèdes que ce
@@ -67,20 +66,20 @@ produites par les cellules.
 
 ## Plan
 
-| | | |
-|---|---|---|
-| 1 | La question qu'on se pose | ✅ |
-| 2 | Un arbre de décision, construit pas à pas | ✅ |
-| 3 | L'impureté : la seule chose que l'arbre optimise | ✅ |
-| 4 | Le MDI, mesure d'importance standard | ✅ |
-| 5 | **Le bug** : de l'importance venue de nulle part | ✅ |
-| 6 | Pourquoi : une identité en trois lignes | ✅ |
-| 7 | Le second biais : juger sur sa propre copie | ✅ |
-| 8 | Remède 1 : mesurer sur des données non vues | ✅ |
-| 9 | Remède 2 : élaguer l'arbre | ✅ |
-| 10 | Comment on sait qui a raison (et les scénarios disponibles) | ✅ |
-| 11 | Le plan d'expérience | ✅ |
-| 12 | Ce qu'on a trouvé | 🚧 **en cours** |
+| | |
+|---|---|
+| 1 | La question qu'on se pose |
+| 2 | Un arbre de décision, construit pas à pas |
+| 3 | L'impureté : la seule chose que l'arbre optimise |
+| 4 | Le MDI, mesure d'importance standard |
+| 5 | **Le bug** : de l'importance venue de nulle part |
+| 6 | Pourquoi : une identité en trois lignes |
+| 7 | Le second biais : juger sur sa propre copie |
+| 8 | Remède 1 : mesurer sur des données non vues |
+| 9 | Remède 2 : élaguer l'arbre |
+| 10 | Comment on sait qui a raison (et les scénarios disponibles) |
+| 11 | Le plan d'expérience |
+| 12 | Ce qu'on a trouvé |
 """)
 
 co(r"""
@@ -1327,55 +1326,17 @@ et non pour la prédiction, serait une contribution à part entière.
 
 if WIP:
     C = C[:PARTIE_12]
-    md(r""" 
+    md(r"""
 ---
 ## 12. Ce qu'on a trouvé
 
-> ### 🚧 Partie en cours de rédaction
-> Le protocole de la partie 11 est **arrêté** et implémenté : neuf bras, trois mesures,
-> sept scénarios, comparaisons appariées avec bootstrap, Wilcoxon et correction de Holm.
-> Les runs tournent ; les chiffres ne sont pas encore consolidés.
+> **Partie en cours de rédaction.** Le protocole de la partie 11 est arrêté et implémenté : neuf
+> bras, trois mesures, sept scénarios, comparaisons appariées avec bootstrap, Wilcoxon et
+> correction de Holm. Les runs tournent ; les chiffres ne sont pas encore consolidés.
 
-### Ce qui reste à faire
+Un résultat est déjà solide, et c'est celui qui oriente la suite.
 
-| | tâche | état |
-|---|---|---|
-| 1 | Passer les sept scénarios dans le protocole apparié complet | en cours |
-| 2 | Balayer le SNR ($0{,}25$, $1$, $4$) sur chacun | en cours |
-| 3 | Grille $\alpha$ fine $\{0{,}\ 0{,}1,\ \dots,\ 3{,}0\}$ pour les chiffres définitifs | à faire |
-| 4 | Reproduire un des 46 jeux de référence de SHL24 | à faire |
-| 5 | Étendre aux forêts (le code le permet déjà : `kind="forest"`) | à faire |
-| 6 | Données réelles | hors périmètre pour l'instant |
-
-### Les questions auxquelles ces runs doivent répondre
-
-1. **Mesurer sur validation suffit-il ?** La partie 8 montre que oui sur un arbre complet —
-   mais aussi que tronquer l'arbre obtient le même effet. Les deux remèdes **s'additionnent-ils,
-   ou sont-ils substituts** ?
-2. **L'élagage *adaptatif* vaut-il mieux qu'un arbre simplement plus court ?** C'est la
-   comparaison `alpha` contre `global`, et c'est la seule qui teste vraiment l'apport de
-   l'alpha-trimming.
-3. **La validation croisée sait-elle choisir $\alpha$ ?** Elle optimise la prédiction. Rien ne
-   garantit que le réglage qui prédit le mieux soit celui qui mesure le mieux — d'où les bras
-   `oracle`, qui bornent ce que l'élagage pourrait donner au mieux.
-
-### En attendant
-
-Tout ce qui précède est reproductible : chaque figure et chaque tableau de ce notebook est
-produit par la cellule qui le précède. Le code est dans `src/`, le protocole complet dans
-`PROTOCOL.md`.
-
----
-
-**Les trois articles**
-
-1. E. Scornet (2023), *Trees, forests, and impurity-based variable importance in regression*
-2. Z. Zhou & G. Hooker (2021), *Unbiased measurement of feature importance in tree-based methods*
-3. N. Surjanovic, A. Henrey & T. M. Loughin (2024), *Alpha-Trimming*
-""")
-    md(r"""
----
-### Le seul résultat déjà solide : les deux $\alpha$ optimaux ne coïncident pas
+### Les deux $\alpha$ optimaux ne coïncident pas
 
 L'alpha-trimming se règle par **un seul** paramètre. On peut donc le choisir de deux façons :
 
@@ -1483,79 +1444,41 @@ print(f"{'masse signal':>12} {verite.sum():>9.3f} {v_etoile[~bruit].sum():>11.3f
 **Les deux optima ne tombent pas au même endroit**, et ce n'est pas un accident de tirage : sur
 30 répétitions indépendantes, ils diffèrent dans **97 %** des cas.
 
-> **Deux vérifications avant d'y croire.**
->
-> *Le choix de $\alpha'$ triche-t-il ?* Il est sélectionné sur le jeu de validation qui sert
-> ensuite à rapporter l'erreur — le même défaut que les bras `oracle`. En le choisissant sur un
-> jeu **séparé** : $\alpha' = 0{,}62$ contre $\alpha^{\star} = 1{,}25$, encore séparés dans
-> **88 %** des répétitions, et $\alpha' < \alpha^{\star}$ dans **85 %**. Le sens tient.
->
-> *Le jeu de validation est-il trop petit ?* La prédiction est jugée sur 4000 points frais,
-> l'importance sur 333 seulement : la seconde courbe est donc plus bruitée. En agrandissant le
-> jeu d'évaluation à $n$ constant pour l'arbre :
->
-> | points d'évaluation | $\alpha'$ médian |
-> |---|---|
-> | $333$ | $0{,}50$ |
-> | $1\,000$ | $0{,}50$ |
-> | $5\,000$ | $0{,}12$ |
-> | $50\,000$ | $0{,}25$ |
->
-> $\alpha'$ **descend** quand on mesure mieux : le bruit du petit échantillon le tirait vers le
-> haut. L'écart avec $\alpha^{\star} = 1{,}25$ est donc **plus grand** que ce que la cellule
-> ci-dessus affiche, pas plus petit. À retenir : le $0{,}50$ est lié à ce dispositif, la
-> **séparation**, elle, est robuste.
-
 Le tableau variable par variable montre le mécanisme. En $\alpha^{\star}$ — l'élagage qui prédit le
 mieux — l'arbre est plus court, donc il **sous-estime le signal** : la masse de signal s'éloigne de
 sa cible. En $\alpha'$ l'arbre garde davantage de coupures, le signal est mieux restitué, et
 l'erreur d'importance est plus basse — alors que cet arbre, lui, **prédit moins bien**.
 
-### Pourquoi ça oriente la suite
-
-La validation croisée ne sait choisir que $\alpha^{\star}$ : elle n'a pas accès à $I_j$, donc elle
-ne peut minimiser que l'erreur de prédiction. **Toute la question est de savoir ce que coûte cet
-écart** — et c'est exactement ce que les bras `oracle` de la partie 11 doivent chiffrer, puisqu'ils
-choisissent $\alpha'$ en trichant et bornent ainsi ce que l'élagage pourrait donner au mieux.
-
 ### L'échange est très inégal
-
-On pourrait croire qu'un $\alpha$ bon pour l'importance l'est aussi pour la prédiction — après tout,
-mieux mesurer les vraies variables devrait aider à prédire. Les chiffres disent le contraire, et de
-façon asymétrique :
 
 | on choisit | on perd en prédiction | on perd en importance |
 |---|---|---|
 | $\alpha'$ (importance) | $+13{,}0\,\%$ | — |
 | $\alpha^{\star}$ (prédiction) | — | $\mathbf{+64{,}8\,\%}$ |
 
-**La raison : les deux objectifs ne pondèrent pas les variables de la même façon.** L'erreur de
-prédiction est dominée par les gros signaux — perdre `signal 5`, qui ne porte que 15 % de la
-variance explicable, coûte presque rien. L'erreur d'importance, elle, somme
-$\sum_j (\hat{I_j} - I_j)^2$ **à poids égal sur les dix variables** : à $\alpha^{\star}$, cette
-seule variable concentre $0{,}018$ des $0{,}031$ d'erreur totale, soit **59 %**.
+Les deux objectifs ne pondèrent pas les variables de la même façon. L'erreur de prédiction est
+dominée par les gros signaux — perdre `signal 5`, qui ne porte que 15 % de la variance explicable,
+coûte presque rien. L'erreur d'importance, elle, somme $\sum_j (\hat{I_j} - I_j)^2$ **à poids égal
+sur les dix variables** : à $\alpha^{\star}$, cette seule variable concentre $0{,}018$ des
+$0{,}031$ d'erreur totale, soit **59 %**.
 
 Un élagage sévère sacrifie donc les signaux faibles. C'est indolore pour prédire, et ruineux pour
 mesurer.
 
-### Existe-t-il déjà un critère pour ça ?
+### Ce que les runs doivent encore établir
 
-**L'observation est connue**, il faut le dire : Fouodo, Kronziel, König & Szymczak (2023), *Effect
-of hyperparameters on variable selection in random forests*, montrent que les hyperparamètres
-optimaux pour la sélection de variables ne sont pas ceux qui optimisent la prédiction.
+La validation croisée ne sait choisir que $\alpha^{\star}$ : elle n'a pas accès à $I_j$. Toute la
+question est de savoir **ce que coûte cet écart** — et c'est ce que les bras `oracle` de la partie
+11 doivent chiffrer, puisqu'ils choisissent $\alpha'$ en trichant et bornent ainsi ce que l'élagage
+pourrait donner au mieux.
 
-**Mais ils s'arrêtent là**, et le disent explicitement :
+---
 
-> *« One important open question remains after this study. It is currently unclear **how to select
-> the optimal hyperparameter values** for analyzing a specific dataset. »*
+**Les trois articles**
 
-Ils mesurent l'effet, ils ne proposent pas de règle. Et ni Scornet (2023), ni Zhou & Hooker (2021),
-ni Surjanovic et al. (2024) n'en proposent non plus — le dernier sélectionne explicitement par
-validation croisée sur l'erreur de prédiction.
-
-Donc si l'écart se confirme, la conclusion ne sera pas « l'élagage ne sert à rien » mais **« il
-faudrait un critère de sélection pensé pour l'importance, et la question est ouverte dans la
-littérature »** — ce qui est une contribution à part entière, et une piste concrète pour la suite.
+1. E. Scornet (2023), *Trees, forests, and impurity-based variable importance in regression*
+2. Z. Zhou & G. Hooker (2021), *Unbiased measurement of feature importance in tree-based methods*
+3. N. Surjanovic, A. Henrey & T. M. Loughin (2024), *Alpha-Trimming*
 """)
 
 nb["cells"] = C
