@@ -1330,30 +1330,20 @@ if WIP:
 ---
 ## 12. Ce qu'on a trouvé
 
-> **Partie en cours de rédaction.** Le protocole de la partie 11 est arrêté et implémenté : neuf
-> bras, trois mesures, sept scénarios, comparaisons appariées avec bootstrap, Wilcoxon et
-> correction de Holm. Les runs tournent ; les chiffres ne sont pas encore consolidés.
+> **Partie en cours de rédaction.** Le protocole de la partie 11 est arrêté et implémenté ; les
+> runs tournent. Un résultat est déjà solide, et c'est celui qui oriente la suite.
 
-Un résultat est déjà solide, et c'est celui qui oriente la suite.
+### Le réglage qui prédit le mieux n'est pas celui qui mesure le mieux
 
-### Les deux $\alpha$ optimaux ne coïncident pas
-
-L'alpha-trimming se règle par **un seul** paramètre. On peut donc le choisir de deux façons :
-
-- $\alpha^{\star}$ — celui qui **prédit** le mieux. C'est ce que fait la validation croisée, et
-  c'est ce pour quoi SHL24 ont conçu la méthode ;
-- $\alpha'$ — celui qui **mesure** le mieux l'importance, c'est-à-dire qui minimise
-  $\sum_j (\hat{I_j} - I_j)^2$. Il n'est calculable qu'en simulation, puisqu'il demande $I_j$.
-
-Rien n'oblige ces deux nombres à être égaux. Mesurons-les.
+L'alpha-trimming n'a qu'**un** paramètre. On peut le choisir pour **prédire** ($\alpha^{\star}$,
+ce que fait la validation croisée) ou pour **mesurer l'importance** ($\alpha'$, qui minimise
+$\sum_j (\hat{I_j} - I_j)^2$ et n'est calculable qu'en simulation). Rien ne les oblige à coïncider.
 """)
     co(r"""
-# on parcourt la grille d alpha et on mesure DEUX choses a chaque niveau :
-# l erreur de prediction (jeu de test) et l erreur d importance (contre I_j)
 grille_a = (0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0)
 R = 20
-
 err_pred, err_imp, nb_feuilles = [], [], []
+
 for a in grille_a:
     p_, i_, f_ = [], [], []
     for rep in range(R):
@@ -1371,114 +1361,54 @@ for a in grille_a:
     err_pred.append(np.mean(p_)); err_imp.append(np.mean(i_)); nb_feuilles.append(np.mean(f_))
 
 k_pred, k_imp = int(np.argmin(err_pred)), int(np.argmin(err_imp))
-a_etoile, a_prime = grille_a[k_pred], grille_a[k_imp]
 
-print(f"{'alpha':>6} {'feuilles':>9} {'erreur PRÉDICTION':>19} {'erreur IMPORTANCE':>19}")
+print(f"{'alpha':>6} {'feuilles':>9} {'err PRÉDICTION':>16} {'err IMPORTANCE':>16}")
 for i_a, a in enumerate(grille_a):
-    marque = ("  <- alpha*  (prédiction)" if i_a == k_pred else "") \
-           + ("  <- alpha'  (importance)" if i_a == k_imp else "")
-    print(f"{a:>6.2f} {nb_feuilles[i_a]:>9.0f} {err_pred[i_a]:>19.4f} "
-          f"{err_imp[i_a]:>19.5f}{marque}")
-print(f"\nalpha* = {a_etoile}   alpha' = {a_prime}   (moyennes sur {R} répétitions)")
+    marque = ("   <- alpha*" if i_a == k_pred else "") + ("   <- alpha'" if i_a == k_imp else "")
+    print(f"{a:>6.2f} {nb_feuilles[i_a]:>9.0f} {err_pred[i_a]:>16.4f} "
+          f"{err_imp[i_a]:>16.5f}{marque}")
+
+print(f"\nalpha* = {grille_a[k_pred]}   alpha' = {grille_a[k_imp]}")
+print("\nce que coûte le mauvais choix :")
+print(f"   choisir alpha' -> on prédit  {100*(err_pred[k_imp]-err_pred[k_pred])/err_pred[k_pred]:+5.1f} % moins bien")
+print(f"   choisir alpha* -> on mesure  {100*(err_imp[k_pred]-err_imp[k_imp])/err_imp[k_imp]:+5.1f} % moins bien")
 """)
     co(r"""
-# deux grandeurs d unites differentes : deux panneaux, jamais deux axes verticaux
-fig, (haut, bas) = plt.subplots(2, 1, figsize=(8.2, 5.6), sharex=True,
+fig, (haut, bas) = plt.subplots(2, 1, figsize=(8.2, 5.2), sharex=True,
                                 gridspec_kw={"hspace": 0.16})
-
-for ax, serie, coul, k, titre, ylab in (
+for ax, serie, coul, kk, titre, ylab in (
     (haut, err_pred, ORANGE, k_pred, "Prédire", "erreur de prédiction"),
     (bas,  err_imp,  PRUNE,  k_imp,  "Mesurer l'importance", "erreur d'importance"),
 ):
     ax.plot(grille_a, serie, marker="o", color=coul, lw=2.2, ms=6.5, mec="white",
             mew=1.5, zorder=3)
-    ax.scatter([grille_a[k]], [serie[k]], s=210, facecolor="none", edgecolor=coul,
+    ax.scatter([grille_a[kk]], [serie[kk]], s=210, facecolor="none", edgecolor=coul,
                lw=2.4, zorder=4)
-    ax.axvline(grille_a[k], color=coul, ls=":", lw=1.5, zorder=2)
+    ax.axvline(grille_a[kk], color=coul, ls=":", lw=1.5, zorder=2)
     ax.set_ylabel(ylab, fontsize=9.5)
     ax.set_title(titre, fontsize=10, color=INK, loc="left")
     ax.grid()
 
-haut.annotate(f"$\\alpha^\\star$ = {a_etoile}", (a_etoile, err_pred[k_pred]),
+haut.annotate(f"$\\alpha^\\star$ = {grille_a[k_pred]}", (grille_a[k_pred], err_pred[k_pred]),
               textcoords="offset points", xytext=(14, 12), fontsize=10, color=ORANGE)
-bas.annotate(f"$\\alpha'$ = {a_prime}", (a_prime, err_imp[k_imp]),
+bas.annotate(f"$\\alpha'$ = {grille_a[k_imp]}", (grille_a[k_imp], err_imp[k_imp]),
              textcoords="offset points", xytext=(14, 12), fontsize=10, color=PRUNE)
-bas.axvline(a_etoile, color=ORANGE, ls=":", lw=1.5, zorder=1)
-bas.annotate("l'optimum de prédiction\ntombe ici", (a_etoile, err_imp[k_pred]),
-             textcoords="offset points", xytext=(14, 26), fontsize=8.5, color=ORANGE,
-             arrowprops=dict(arrowstyle="->", color=ORANGE, lw=1.1))
+bas.axvline(grille_a[k_pred], color=ORANGE, ls=":", lw=1.5, zorder=1)
 
 bas.set_xlabel("alpha (sévérité de l'élagage)")
-fig.suptitle("Le réglage qui prédit le mieux n'est pas celui qui mesure le mieux",
-             fontsize=11, color=INK)
+fig.suptitle("Deux objectifs, deux optima", fontsize=11, color=INK)
 plt.tight_layout(); plt.show()
 """)
-    co(r"""
-# les importances effectivement obtenues aux deux niveaux, variable par variable
-def importances_a(a):
-    out = []
-    for rep in range(R):
-        g = np.random.default_rng(rep)
-        Xa, ya = simulate.sample(scenario, 1000, g)
-        ordre_a = g.permutation(1000)
-        v_a, t_a = ordre_a[:333], ordre_a[333:]
-        ctr = float(ya[t_a].mean())
-        mod = prune.trim(models.grow(Xa[t_a], ya[t_a] - ctr, cfg, seed=rep,
-                                     min_samples_leaf=5), a)
-        out.append(mdi.model_mdi_oob(mod, Xa[v_a], ya[v_a] - ctr, d))
-    return np.mean(out, axis=0)
-
-v_etoile, v_prime = importances_a(a_etoile), importances_a(a_prime)
-
-print(f"{'variable':>12} {'vérité':>9} {'à alpha*':>11} {'à alpha-prime':>15}")
-for j in range(d):
-    etiq_j = f"bruit {j-4}" if bruit[j] else f"signal {j+1}"
-    print(f"{etiq_j:>12} {verite[j]:>9.3f} {v_etoile[j]:>11.3f} {v_prime[j]:>15.3f}")
-print(f"{'-'*49:>49}")
-print(f"{'masse bruit':>12} {0.0:>9.3f} {v_etoile[bruit].sum():>11.3f} "
-      f"{v_prime[bruit].sum():>15.3f}")
-print(f"{'masse signal':>12} {verite.sum():>9.3f} {v_etoile[~bruit].sum():>11.3f} "
-      f"{v_prime[~bruit].sum():>15.3f}")
-""")
     md(r"""
-**Les deux optima ne tombent pas au même endroit**, et ce n'est pas un accident de tirage : sur
-30 répétitions indépendantes, ils diffèrent dans **97 %** des cas.
+**L'échange est très inégal.** Choisir $\alpha'$ coûte **13 %** de prédiction ; choisir
+$\alpha^{\star}$ coûte **65 %** de précision d'importance.
 
-Le tableau variable par variable montre le mécanisme. En $\alpha^{\star}$ — l'élagage qui prédit le
-mieux — l'arbre est plus court, donc il **sous-estime le signal** : la masse de signal s'éloigne de
-sa cible. En $\alpha'$ l'arbre garde davantage de coupures, le signal est mieux restitué, et
-l'erreur d'importance est plus basse — alors que cet arbre, lui, **prédit moins bien**.
+La raison : l'erreur de prédiction est dominée par les gros signaux, alors que l'erreur
+d'importance somme $\sum_j (\hat{I_j} - I_j)^2$ **à poids égal sur les dix variables**. Un élagage
+sévère sacrifie les signaux faibles — indolore pour prédire, ruineux pour mesurer.
 
-### L'échange est très inégal
-
-| on choisit | on perd en prédiction | on perd en importance |
-|---|---|---|
-| $\alpha'$ (importance) | $+13{,}0\,\%$ | — |
-| $\alpha^{\star}$ (prédiction) | — | $\mathbf{+64{,}8\,\%}$ |
-
-Les deux objectifs ne pondèrent pas les variables de la même façon. L'erreur de prédiction est
-dominée par les gros signaux — perdre `signal 5`, qui ne porte que 15 % de la variance explicable,
-coûte presque rien. L'erreur d'importance, elle, somme $\sum_j (\hat{I_j} - I_j)^2$ **à poids égal
-sur les dix variables** : à $\alpha^{\star}$, cette seule variable concentre $0{,}018$ des
-$0{,}031$ d'erreur totale, soit **59 %**.
-
-Un élagage sévère sacrifie donc les signaux faibles. C'est indolore pour prédire, et ruineux pour
-mesurer.
-
-### Ce que les runs doivent encore établir
-
-La validation croisée ne sait choisir que $\alpha^{\star}$ : elle n'a pas accès à $I_j$. Toute la
-question est de savoir **ce que coûte cet écart** — et c'est ce que les bras `oracle` de la partie
-11 doivent chiffrer, puisqu'ils choisissent $\alpha'$ en trichant et bornent ainsi ce que l'élagage
-pourrait donner au mieux.
-
----
-
-**Les trois articles**
-
-1. E. Scornet (2023), *Trees, forests, and impurity-based variable importance in regression*
-2. Z. Zhou & G. Hooker (2021), *Unbiased measurement of feature importance in tree-based methods*
-3. N. Surjanovic, A. Henrey & T. M. Loughin (2024), *Alpha-Trimming*
+Or la validation croisée ne sait trouver que $\alpha^{\star}$ : elle n'a pas accès à $I_j$. **Ce
+que coûte cet écart est exactement ce que les runs en cours doivent chiffrer.**
 """)
 
 nb["cells"] = C
