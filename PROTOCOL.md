@@ -201,9 +201,11 @@ Every clause of the brief now has code behind it:
 > **S2 was retired.** It was a purpose-built scenario with importances spanning
 > two orders of magnitude, there to make the measures separable -- on S1 all
 > three sit at 0.97-0.99 AUC and nothing can be told apart. `DS4` at `snr=0.25`
-> does the same job from the literature: the spread between best and worst
-> measure is 2.50x against S2's 2.67x. `simulate.rescaled()` is kept, since
-> prescribing `I_j` exactly is the one thing the DS models cannot do.
+> does the same job from the literature (2.50x spread against S2's 2.67x), and
+> **S1 at `snr=0.25` does it better still: 14.19x**. Lowering the SNR separates
+> the measures more sharply than spreading the true importances ever did, so the
+> purpose-built scenario was redundant twice over. `simulate.rescaled()` is kept,
+> since prescribing `I_j` exactly is the one thing the DS models cannot do.
 
 Remaining, in order:
 
@@ -363,16 +365,36 @@ importance error by 15% to 43%, and it does so on S1 too -- so this is driven by
 the noise level, not by dimension or sparsity. [SHL24]'s own condition was the
 one we had not tested, and it holds.
 
-*But it is nearly unreachable.* The alpha that cross-validation actually selects
-captures the gain in **one regime out of five** (DS4 at `snr=0.25`, the extreme
-with `sigma^2 = 39.7`). In the other four it makes the error **18% to 41% worse**.
-CV optimises prediction error, and the alpha that predicts best is not the alpha
-that measures best -- the gap between the two columns is the whole result.
+*But it does not reach the quality that more signal would buy.* On DS4, the error
+is 5.9 at `snr=4` unpruned and 22.8 at `snr=0.25`; pruning brings the latter to
+13.1. Pruning recovers part of the damage low SNR does, it does not undo it.
 
-So the honest answer to *evaluer la pertinence* is neither a flat yes nor a flat
-no: **pruning is worth doing for importance when the signal-to-noise ratio is low,
-and nobody currently knows how to select the amount.** That is a sharper finding
-than "pruning does not help", and it names the next piece of work.
+*And it is nearly unreachable in practice.* The alpha that cross-validation
+actually selects captures the gain in **one regime out of five** (DS4 at
+`snr=0.25`). In the other four it makes the error **18% to 41% worse**. CV
+optimises prediction error, and the alpha that predicts best is not the alpha that
+measures best -- the gap between the two columns is the result.
+
+**9. The low-SNR gain is truncation, not adaptivity -- which is the project's own
+question, answered negatively.** PROTOCOL states that `alpha` vs `global` *is* the
+project: is adaptive pruning better than merely shallower trees? Giving both their
+best honestly-selected level on the held-out measure, 40 repetitions:
+
+| scenario | alpha-trimming | plain `min_samples_leaf` | gap | p |
+|---|---|---|---|---|
+| DS4 `snr=0.25` | 12.426 | 12.830 | -3.1% | 0.079 |
+| DS3 `snr=0.25` | 0.358 | 0.251 | **+42.4%** | **0.000** |
+| S1 `snr=0.25` | 0.092 | 0.083 | **+10.5%** | **0.045** |
+
+Alpha-trimming is **significantly worse than a plain leaf-size floor in two of
+three**, and never significantly better. The entire -42% on DS4 is reproduced by
+`min_samples_leaf` alone (-42.2% against -42.5%).
+
+So finding 8 must be read as *truncation helps the held-out MDI at low SNR*. The
+adaptive machinery [SHL24] contributes -- pruning harder where data is sparse --
+buys nothing for importance, and sometimes costs. It was designed and validated
+for mean squared prediction error, never for importance, and the distinction holds
+up under test.
 
 ### Mistakes found along the way
 

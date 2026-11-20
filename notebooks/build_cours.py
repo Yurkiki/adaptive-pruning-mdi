@@ -993,14 +993,18 @@ et les variables indépendantes.
 Tous additifs à variables indépendantes — la seule situation où $I_j$ existe. Chacun isole une
 difficulté différente :
 
-| | $n$ | $d$ | signaux | bruit | $I_j$ le plus faible | étalement | **ce qu'il met à l'épreuve** |
-|---|---|---|---|---|---|---|---|
-| `S1` | 1000 | 10 | 5 | 50 % | $0{,}083$ | $6\times$ | **le cas de base** : distinguer signal et bruit, tous les signaux étant largement détectables |
-| `DS1` | 800 | 50 | 2 | 96 % | $0{,}040$ | $2\times$ | **la parcimonie** : 2 aiguilles dans 50 colonnes |
-| `DS3` | 600 | 100 | 4 | 96 % | $0{,}089$ | $7\times$ | la parcimonie à $d = 100$ |
-| `DS4` | 600 | 100 | 4 | 96 % | $0{,}206$ | $33\times$ | des contributions très inégales *et* 96 % de bruit |
-| `DS6` | 500 | 30 | 10 | 67 % | $0{,}250$ | $\mathbf{1\times}$ | **la symétrie** : 10 signaux *strictement identiques*, que la mesure doit égaliser |
-| `DS8` | 500 | **1000** | 4 | 100 % | $0{,}333$ | $5\times$ | **$d > n$** : deux fois plus de colonnes que de lignes |
+| | $n$ | $d$ | signaux | bruit | **ce qu'il met à l'épreuve** |
+|---|---|---|---|---|---|
+| `S1` | 1000 | 10 | 5 | 50 % | **Le contrôle.** Les cinq vraies variables sont largement au-dessus du bruit, et il y a autant de signal que de bruit. N'importe quelle mesure correcte doit réussir — donc tout échec ici dénonce un défaut de la mesure, pas une difficulté du problème. C'est aussi le seul scénario assez petit pour qu'on imprime les dix importances et qu'on les lise à l'œil. |
+| `DS1` | 800 | 50 | 2 | 96 % | **La parcimonie.** Deux aiguilles dans cinquante colonnes. Chaque colonne inutile est une occasion supplémentaire de tomber par hasard sur une coupure qui « marche » sur l'entraînement : le biais devrait donc grandir avec $d$, à signal constant. |
+| `DS3` | 600 | 100 | 4 | 96 % | **La même question, deux fois plus large**, et avec moins de lignes. `DS1` et `DS3` ne diffèrent que par là, ce qui isole l'effet de la dimension sans changer la nature du signal. |
+| `DS4` | 600 | 100 | 4 | 96 % | **Le scénario discriminant.** Mêmes $n$ et $d$ que `DS3`, mais des contributions très inégales. C'est celui qui sépare le mieux les trois mesures une fois le SNR abaissé — c'est sur lui qu'on mesure le résultat de la partie 12. |
+| `DS6` | 500 | 30 | 10 | 67 % | **La symétrie.** Les dix signaux ont *exactement* la même importance ($0{,}25$), donc une mesure correcte doit les déclarer égaux. Un arbre unique en est incapable : la dispersion entre les dix estimations atteint **57 %**, contre **30 %** pour une forêt de 100. C'est le seul scénario qui sépare ce que coûte *un arbre* de ce qu'apporte *une forêt*. |
+| `DS8` | 500 | **1000** | 4 | 100 % | **Le régime $d > n$.** Deux fois plus de colonnes que de lignes, et 996 d'entre elles sont du bruit pur. C'est le cas extrême de la parcimonie, celui où l'arbre a le plus d'occasions de se tromper — et le plus coûteux à faire tourner (6,2 s par répétition). |
+
+La colonne **bruit** est la part des colonnes dont la vraie importance vaut exactement zéro. Elle
+passe de 50 % à 100 %, ce qui est le principal axe de variation entre les scénarios : `S1` teste
+une mesure dans des conditions confortables, les `DS` la testent là où presque tout est du bruit.
 
 `S1` est écrit pour ce projet, dans le cadre du Modèle 3 de Scornet (2023) : $X$ uniforme sur
 $[0,1]^d$, contributions additives, bruit gaussien. Il sert de **contrôle** — un problème assez
@@ -1036,14 +1040,6 @@ d'occasions de tomber par chance sur une coupure de bruit qui « marche ».
 > ($d = 100$) à SNR élevé. **Tester uniquement à SNR $= 4$ aurait produit un résultat négatif
 > sans valeur** — on aurait évalué la méthode hors des conditions où ses auteurs l'annoncent
 > efficace. La partie 12 dit ce qu'il reste du résultat une fois cette condition respectée.
-
-> **`DS6` mérite une mention à part.** Ses dix signaux ont **exactement** la même importance
-> ($0{,}25$ chacun), donc une mesure correcte doit les déclarer égaux. Mesuré sur `mdi_train`, la
-> dispersion relative entre les dix estimations vaut **57 %** pour un arbre unique, **30 %** pour
-> une forêt de 100 — la forêt réduit de moitié, sans annuler. C'est le seul scénario qui sépare ce
-> que coûte *un arbre* de ce qu'apporte *une forêt*, et il rejoint une remarque de Scornet (2023)
-> sur les modèles symétriques : égaliser des variables interchangeables est hors de portée d'un
-> arbre seul, et devient un objectif atteignable en moyennant.
 
 > **Trois des huit modèles du papier sont inutilisables ici.** Les modèles 2, 5 et 7 contiennent
 > des produits ($\tilde{X}_1\tilde{X}_2$) et des indicatrices à plusieurs variables. Dans ces cas,
@@ -1246,6 +1242,18 @@ $\alpha = 0$, arbre unique, 40 répétitions :
 **Le gain est réel.** À bas SNR, le meilleur élagage réduit l'erreur de 15 à 43 %. Et il le fait
 aussi sur `S1` ($d = 10$, 50 % de bruit) : ce n'est donc pas la dimension ni la parcimonie qui
 commandent, c'est le **niveau de bruit**. La proposition 3.3 de SHL24 est vérifiée.
+
+> **Mais ce gain ne vient pas de l'alpha-trimming.** En donnant son meilleur niveau à chacune des
+> deux méthodes, l'élagage adaptatif ne bat jamais une simple taille de feuille minimale — et il
+> est **significativement pire** dans deux cas sur trois (`DS3` : $+42\,\%$, $p < 0{,}001$ ;
+> `S1` : $+10{,}5\,\%$, $p = 0{,}045$). Les $-42\,\%$ de `DS4` sont intégralement reproduits par
+> `min_samples_leaf` seul ($-42{,}2\,\%$ contre $-42{,}5\,\%$).
+>
+> Or c'est **la** question du projet : l'élagage *adaptatif* vaut-il mieux que des arbres
+> simplement *plus courts* ? La réponse est non. La machinerie de SHL24 — élaguer plus fort là où
+> les données manquent — n'apporte rien à l'importance, et coûte parfois. Elle a été conçue et
+> validée pour l'erreur de prédiction, jamais pour l'importance, et la distinction tient à
+> l'épreuve.
 
 **3 · Mais il est presque inatteignable.** Regardez la dernière colonne : le $\alpha$ que la
 validation croisée choisit réellement ne capte le gain que dans **un cas sur cinq**. Dans les
