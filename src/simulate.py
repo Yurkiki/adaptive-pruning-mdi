@@ -97,7 +97,7 @@ def scenario_s1(snr: float = 4.0, n_noise: int = 5) -> Scenario:
     return Scenario(f"S1_snr{snr:g}", SIGNAL_LIBRARY + (NOISE,) * n_noise, snr)
 
 
-def scenario_s4(snr: float = 4.0, n_noise: int = 5) -> Scenario:
+def scenario_s2(snr: float = 4.0, n_noise: int = 5) -> Scenario:
     """Heterogeneous signal: true importances spanning two orders of magnitude.
 
     A constant ratio of 3 between consecutive components. The weakest is 0.02
@@ -110,7 +110,7 @@ def scenario_s4(snr: float = 4.0, n_noise: int = 5) -> Scenario:
     signals = tuple(
         rescaled(c, t) for c, t in zip(SIGNAL_LIBRARY, targets, strict=True)
     )
-    return Scenario(f"S4_snr{snr:g}", signals + (NOISE,) * n_noise, snr)
+    return Scenario(f"S2_snr{snr:g}", signals + (NOISE,) * n_noise, snr)
 
 
 # --- Duroux & Scornet (2016), section 4 ------------------------------------
@@ -263,7 +263,7 @@ def _duroux_factory(tag: str) -> ScenarioFactory:
 
 SCENARIOS: dict[str, ScenarioFactory] = {
     "S1": scenario_s1,
-    "S4": scenario_s4,
+    "S2": scenario_s2,
     **{tag: _duroux_factory(tag) for tag in _DUROUX},
 }
 

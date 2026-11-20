@@ -90,7 +90,7 @@ def select_oracle(
 
     It selects on `x_val, y_val`, the same rows the reported value is later
     computed on, so its number is **optimistic** -- an upper bound, not an
-    achievable score. Measured on S1/S4 at n = 1200 over 100 repetitions, the
+    achievable score. Measured on S1/S2 at n = 1200 over 100 repetitions, the
     optimism is 3% to 11%, and it flips the sign: this oracle appears to beat
     alpha = 0 by 1-11%, while an oracle that selects on a separate held-out split
     *loses* to alpha = 0 by 2-4% and wins in only 26-44 reps of 100. Read a gain

@@ -816,6 +816,18 @@ toute la grille.
 Ce qui le rend *adaptatif* : le gain d'une coupure grandit comme $|N|$, la pénalité seulement comme
 $\log|N|$. Donc on élague **fort là où les données sont rares**, et peu là où elles sont nombreuses.
 
+> **Le paramètre qui décide, d'après les auteurs eux-mêmes : le rapport signal/bruit.** Leur
+> proposition 3.3 établit que le bon niveau d'élagage est une **fonction du SNR**, et que c'est à
+> **bas SNR** que l'élagage paie le plus. L'intuition est directe : plus il y a de bruit, plus un
+> arbre profond en absorbe, plus il y a à gagner à le raccourcir.
+>
+> C'est une condition à respecter pour que le test soit loyal. Évaluer la méthode uniquement à
+> SNR élevé — là où elle n'est pas censée servir — produirait un résultat négatif sans valeur.
+> Le protocole balaie donc $\mathrm{SNR} \in \{0{,}25,\ 1,\ 4\}$, et la conclusion tient aussi
+> dans le régime qui leur est favorable : à SNR $= 0{,}25$ l'élagage devient **neutre** pour les
+> mesures hors-échantillon (10 répétitions gagnantes sur 20, $p = 0{,}60$) — il cesse de nuire,
+> sans jamais aider.
+
 ### Pourquoi c'est le cœur du projet
 
 Les parties 1 à 8 sont du contexte. **C'est ici que se joue la question posée**, pour trois
@@ -983,7 +995,7 @@ Deux familles, toutes additives à variables indépendantes — la seule situati
 | | d'où ça vient | $d$ | signaux |
 |---|---|---|---|
 | `S1` | fabriqué pour ce projet : cinq formes de tailles comparables | 10 | 5 |
-| `S4` | idem, mais les importances couvrent deux ordres de grandeur | 10 | 5 |
+| `S2` | idem, mais les importances couvrent deux ordres de grandeur | 10 | 5 |
 | `DS1`, `DS3`, `DS4`, `DS6`, `DS8` | **Duroux & Scornet (2016)**, section 4 | 30 à 1000 | 2 à 10 |
 
 Les modèles Duroux–Scornet sont plus larges et plus parcimonieux que les nôtres : `DS8` a 1000
