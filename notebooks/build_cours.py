@@ -1026,23 +1026,6 @@ d'occasions de tomber par chance sur une coupure de bruit qui « marche ».
 """)
 
 co(r"""
-# les modeles additifs du papier de Duroux & Scornet
-print(f'{"modele":>7} {"d":>6} {"signaux":>9} {"sum I_j":>9}   indices porteurs de signal')
-for tag in ("DS1", "DS3", "DS4", "DS6", "DS8"):
-    sc_ds = simulate.duroux(tag)
-    porteurs = np.flatnonzero(~sc_ds.is_noise)
-    apercu = str(porteurs.tolist()[:6]) + ("…" if porteurs.size > 6 else "")
-    print(f'{tag:>7} {sc_ds.n_features:>6} {porteurs.size:>9} '
-          f'{sc_ds.true_importance.sum():>9.3f}   {apercu}')
-
-for refuse in ("DS2", "DS5", "DS7"):
-    try:
-        simulate.duroux(refuse)
-    except ValueError as e:
-        print(f'\n  {refuse} -> refusé : {e}')
-""")
-
-co(r"""
 print(f"{'variable':>12} {'fonction':>14} {'I_j (vérité)':>13}")
 for j, c in enumerate(scenario.components):
     print(f"{('bruit' if bruit[j] else 'signal'):>7} {j+1:<4} {c.name:>14} {c.variance:>13.4f}")
