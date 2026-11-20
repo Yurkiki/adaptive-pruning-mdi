@@ -1331,7 +1331,14 @@ if WIP:
 ## 12. Ce qu'on a trouvé
 
 > **Partie en cours de rédaction.** Le protocole de la partie 11 est arrêté et implémenté ; les
-> runs tournent. Un résultat est déjà solide, et c'est celui qui oriente la suite.
+> runs tournent.
+
+**La question posée est celle-ci :** l'élagage adaptatif **plus** le calcul du MDI sur un jeu de
+validation fait-il mieux que le calcul sur validation **seul** — et mieux que la pratique
+courante ? C'est ce que les comparaisons appariées de la partie 11 doivent trancher, et les
+chiffres ne sont pas encore consolidés.
+
+En attendant, un résultat est déjà solide, et il conditionne la réponse.
 
 ### Le réglage qui prédit le mieux n'est pas celui qui mesure le mieux
 
@@ -1413,8 +1420,11 @@ La raison : l'erreur de prédiction est dominée par les gros signaux, alors que
 d'importance somme $\sum_j (\hat{I_j} - I_j)^2$ **à poids égal sur les dix variables**. Un élagage
 sévère sacrifie les signaux faibles — indolore pour prédire, ruineux pour mesurer.
 
-Or la validation croisée ne sait trouver que $\alpha^{\star}$ : elle n'a pas accès à $I_j$. **Ce
-que coûte cet écart est exactement ce que les runs en cours doivent chiffrer.**
+**Pourquoi ça conditionne la réponse à la question centrale.** La validation croisée ne sait
+trouver que $\alpha^{\star}$ : elle n'a pas accès à $I_j$. Donc même si l'élagage améliorait le
+MDI-oob, le seul réglage disponible en pratique irait le chercher au mauvais endroit — et un
+résultat négatif ne voudrait pas dire « l'élagage ne sert à rien », mais « on ne sait pas le
+régler ». Les bras `oracle` de la partie 11 existent pour départager les deux.
 """)
 
 nb["cells"] = C
