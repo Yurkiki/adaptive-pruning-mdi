@@ -1338,6 +1338,12 @@ if WIP:
 L'alpha-trimming n'a qu'**un** paramètre. On peut le choisir pour **prédire** ($\alpha^{\star}$,
 ce que fait la validation croisée) ou pour **mesurer l'importance** ($\alpha'$, qui minimise
 $\sum_j (\hat{I_j} - I_j)^2$ et n'est calculable qu'en simulation). Rien ne les oblige à coïncider.
+
+> **L'importance est ici `mdi_oob`** — la mesure calculée **uniquement sur le jeu de validation**,
+> celle qui n'emprunte rien aux lignes d'entraînement. C'est la lecture la plus stricte du sujet.
+> Trois jeux distincts interviennent : l'arbre est construit sur **667** lignes, `mdi_oob` est
+> évaluée sur les **333** mises de côté, et l'erreur de prédiction sur **4000** points tirés à
+> part — sans quoi les deux courbes partageraient le même bruit.
 """)
     co(r"""
 grille_a = (0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0)
