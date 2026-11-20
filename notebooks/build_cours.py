@@ -852,17 +852,44 @@ print(inspect.getsource(prune.alpha_trim))
 """)
 
 md(r"""
-Les points qui comptent pour suivre le code :
+### Les deux formules de l'article
 
-- `for node in range(n_nodes - 1, -1, -1)` : on part des **feuilles** et on remonte — on ne peut
-  décider de fusionner un nœud qu'une fois que ses deux enfants sont déjà tranchés.
-- `_information(...)` calcule l'équation (4) de l'article : à variance égale, un nœud dont les
-  points sont loin de la moyenne (`sum_squares` grand) a une information faible — moins
-  d'évidence qu'il faut deux moyennes plutôt qu'une.
-- `merge = parent_information + alpha * root_penalty <= ...` est l'inégalité (5) — la seule
-  décision de tout l'algorithme : garder la coupure ou la dissoudre.
+**L'équation (4)** — ce que `_information()` calcule. C'est la **déviance** d'un nœud $N$ : moins
+deux fois sa log-vraisemblance gaussienne, à $\hat\sigma^2$ donné.
+
+$$I_N \;=\; |N| \,\log\!\big(2\pi\hat\sigma^2\big) \;+\; \frac{1}{\hat\sigma^2}\sum_{i \in N}\big(y_i - \mu_N\big)^2$$
+
+C'est un **coût** : plus $I_N$ est **petit**, mieux le modèle décrit les données. Un nœud dont les
+points sont loin de leur moyenne a donc une somme des carrés grande, donc un $I_N$ **grand** — un
+mauvais ajustement, qui plaide *pour* la coupure.
+
+**L'inégalité (5)** — la seule décision de tout l'algorithme. On **fusionne** (on supprime la
+coupure) quand :
+
+$$\underbrace{I_N + \alpha P_{0,|N|}}_{\text{une seule moyenne}} \;\;\leq\;\; \underbrace{I_{N_L} + I_{N_R} + \alpha P_{1,|N|}}_{\text{deux moyennes}}, \qquad P_{0,n} = 2\log n, \quad P_{1,n} = 5\log n$$
+
+À gauche le modèle simple : une moyenne, deux paramètres $(\mu, \sigma^2)$, d'où $P_0 = 2\log n$.
+À droite le modèle à deux moyennes : cinq paramètres $(\mu_1, \mu_2, \sigma^2$, et le point de
+coupure$)$, d'où $P_1 = 5\log n$.
+
+Le modèle de droite ajuste forcément mieux ($I_L + I_R \leq I_N$), mais il paie $3\alpha\log n$ de
+plus. **Si le gain d'ajustement ne couvre pas ce surcoût, la coupure saute.**
+
+Et l'accumulation, quand la coupure survit :
+
+$$I_N \;\longleftarrow\; I_{N_L} + I_{N_R} + \alpha\big(P_{1,|N|} - P_{0,|N|}\big)$$
+
+Le nœud transmet vers le haut le coût de tout ce qui est sous lui — c'est ce qui permet à une
+branche entière d'être dissoute plus tard.
+
+### Deux détails du code
+
+- `for node in range(n_nodes - 1, -1, -1)` : on part des **feuilles** et on remonte. Scikit-learn
+  numérote un nœud avant son sous-arbre, donc parcourir les indices à l'envers visite chaque enfant
+  avant son parent — nécessaire, puisque $I_{N_L}$ et $I_{N_R}$ doivent être connus pour trancher
+  sur $N$.
 - la boucle `while stack` à la fin corrige un cas que l'article ne traite pas explicitement : un
-  nœud peut survivre à cette comparaison alors que **son parent** vient d'être fusionné plus haut —
+  nœud peut survivre à l'inégalité (5) alors que **son parent** vient d'être fusionné plus haut —
   il faut alors le détacher aussi, sinon il reste compté bien qu'inatteignable depuis la racine.
 """)
 
