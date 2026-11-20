@@ -1,4 +1,14 @@
+import argparse
+
 import nbformat as nbf
+
+parser = argparse.ArgumentParser(description="construit le notebook de cours")
+parser.add_argument(
+    "--wip", action="store_true",
+    help="version en travaux : s'arrete a la fin de la partie 11 et liste ce qui reste",
+)
+WIP = parser.parse_args().wip
+SORTIE = "notebooks/cours_wip.ipynb" if WIP else "notebooks/cours.ipynb"
 
 nb = nbf.v4.new_notebook()
 C = []
@@ -36,6 +46,41 @@ produites par les cellules.
 | 10 | Comment on sait qui a raison (et les scénarios disponibles) |
 | 11 | Le plan d'expérience |
 | 12 | Ce qu'on a trouvé |
+""" if not WIP else r"""
+# Importance des variables : pourquoi la mesure standard est fausse, et comment la réparer
+
+> ### 🚧 Version de travail
+> Les parties **1 à 11** sont rédigées et tournent. La partie 12 attend la fin des
+> expériences — le protocole est fixé, les runs sont en cours.
+
+**Ce notebook ne suppose aucune connaissance préalable.** On part de zéro : ce qu'est un arbre de
+décision, ce qu'il mesure, pourquoi sa mesure d'importance est biaisée, et les deux remèdes que ce
+projet combine.
+
+Chaque idée est montrée, pas seulement décrite : tout le code tourne, toutes les figures sont
+produites par les cellules.
+
+> **Pour exécuter** : lancez depuis la racine du dépôt (`jupyter lab notebooks/cours_wip.ipynb`).
+> Dépendances : `numpy`, `scipy`, `scikit-learn`, `pandas`, `matplotlib`.
+
+---
+
+## Plan
+
+| | | |
+|---|---|---|
+| 1 | La question qu'on se pose | ✅ |
+| 2 | Un arbre de décision, construit pas à pas | ✅ |
+| 3 | L'impureté : la seule chose que l'arbre optimise | ✅ |
+| 4 | Le MDI, mesure d'importance standard | ✅ |
+| 5 | **Le bug** : de l'importance venue de nulle part | ✅ |
+| 6 | Pourquoi : une identité en trois lignes | ✅ |
+| 7 | Le second biais : juger sur sa propre copie | ✅ |
+| 8 | Remède 1 : mesurer sur des données non vues | ✅ |
+| 9 | Remède 2 : élaguer l'arbre | ✅ |
+| 10 | Comment on sait qui a raison (et les scénarios disponibles) | ✅ |
+| 11 | Le plan d'expérience | ✅ |
+| 12 | Ce qu'on a trouvé | 🚧 **en cours** |
 """)
 
 co(r"""
@@ -1118,6 +1163,8 @@ Deux subtilités qui font toute la rigueur du dispositif :
 > ou le réglage était mauvais. L'oracle, qui a le droit de tricher en regardant la vérité, tranche.
 """)
 
+PARTIE_12 = len(C)
+
 # ---------------------------------------------------------------- 12
 md(r"""
 ---
@@ -1256,6 +1303,56 @@ et non pour la prédiction, serait une contribution à part entière.
 3. N. Surjanovic, A. Henrey & T. M. Loughin (2024), *Alpha-Trimming* — l'élagage adaptatif
 """)
 
+
+if WIP:
+    C = C[:PARTIE_12]
+    md(r""" 
+---
+## 12. Ce qu'on a trouvé
+
+> ### 🚧 Partie en cours de rédaction
+> Le protocole de la partie 11 est **arrêté** et implémenté : neuf bras, trois mesures,
+> sept scénarios, comparaisons appariées avec bootstrap, Wilcoxon et correction de Holm.
+> Les runs tournent ; les chiffres ne sont pas encore consolidés.
+
+### Ce qui reste à faire
+
+| | tâche | état |
+|---|---|---|
+| 1 | Passer les sept scénarios dans le protocole apparié complet | en cours |
+| 2 | Balayer le SNR ($0{,}25$, $1$, $4$) sur chacun | en cours |
+| 3 | Grille $\alpha$ fine $\{0{,}\ 0{,}1,\ \dots,\ 3{,}0\}$ pour les chiffres définitifs | à faire |
+| 4 | Reproduire un des 46 jeux de référence de SHL24 | à faire |
+| 5 | Étendre aux forêts (le code le permet déjà : `kind="forest"`) | à faire |
+| 6 | Données réelles | hors périmètre pour l'instant |
+
+### Les questions auxquelles ces runs doivent répondre
+
+1. **Mesurer sur validation suffit-il ?** La partie 8 montre que oui sur un arbre complet —
+   mais aussi que tronquer l'arbre obtient le même effet. Les deux remèdes **s'additionnent-ils,
+   ou sont-ils substituts** ?
+2. **L'élagage *adaptatif* vaut-il mieux qu'un arbre simplement plus court ?** C'est la
+   comparaison `alpha` contre `global`, et c'est la seule qui teste vraiment l'apport de
+   l'alpha-trimming.
+3. **La validation croisée sait-elle choisir $\alpha$ ?** Elle optimise la prédiction. Rien ne
+   garantit que le réglage qui prédit le mieux soit celui qui mesure le mieux — d'où les bras
+   `oracle`, qui bornent ce que l'élagage pourrait donner au mieux.
+
+### En attendant
+
+Tout ce qui précède est reproductible : chaque figure et chaque tableau de ce notebook est
+produit par la cellule qui le précède. Le code est dans `src/`, le protocole complet dans
+`PROTOCOL.md`.
+
+---
+
+**Les trois articles**
+
+1. E. Scornet (2023), *Trees, forests, and impurity-based variable importance in regression*
+2. Z. Zhou & G. Hooker (2021), *Unbiased measurement of feature importance in tree-based methods*
+3. N. Surjanovic, A. Henrey & T. M. Loughin (2024), *Alpha-Trimming*
+""")
+
 nb["cells"] = C
 nb.metadata = {
     "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
@@ -1263,5 +1360,5 @@ nb.metadata = {
 }
 import os
 os.makedirs("notebooks", exist_ok=True)
-nbf.write(nb, "notebooks/cours.ipynb")
-print(f"écrit : notebooks/cours.ipynb — {len(C)} cellules")
+nbf.write(nb, SORTIE)
+print(f"écrit : {SORTIE} — {len(C)} cellules")
